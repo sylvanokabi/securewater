@@ -25,7 +25,7 @@
 
 ## 📁 Structure du Projet
 
-```text
+
 securewater/
 ├── backend/                  # API REST & WebSockets (Django / DRF)
 │   ├── core/                 # Configuration principale du projet Django
