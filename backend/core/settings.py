@@ -235,6 +235,7 @@ DEFAULT_FROM_EMAIL = env(
 
 # Clé primaire par défaut
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "accounts.User"
 
 
 # Sécurité supplémentaire en production HTTPS
