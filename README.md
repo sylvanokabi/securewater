@@ -25,6 +25,7 @@
 
 ## 📁 Structure du Projet
 
+'''text
 
 securewater/
 ├── backend/                  # API REST & WebSockets (Django / DRF)
@@ -46,6 +47,8 @@ securewater/
 └── README.md
 
 
+
+
 ## 💻 Guide de Démarrage Rapide (Spécial Collaborateurs)
 
 Bienvenue dans l'équipe ! Ce guide vous explique pas à pas comment installer et lancer le projet sur votre machine (Windows ou Ubuntu/Linux).
@@ -62,7 +65,7 @@ cd ~/Documents          # Sur Ubuntu
 # cd C:\Projets         # Sur Windows (exemple)
 
 # 2. Cloner le projet sur votre machine
-git clone [https://github.com/sylvanokabi/securewater.git](https://github.com/sylvanokabi/securewater.git)
+git clone https://github.com/sylvanokabi/securewater.git
 
 # 3. Entrer dans le dossier du projet
 cd securewater
