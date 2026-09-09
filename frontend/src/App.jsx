@@ -4,15 +4,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // Pages
 import Connexion from './pages/Connexion';
 import Inscription from './pages/Inscription';
-import TableauDeBord from './pages/TableauDeBord';
-import Reservoirs from './pages/Reservoirs';
-import Capteurs from './pages/Capteurs';
-import Alertes from './pages/Alertes';
+//import TableauDeBord from './pages/TableauDeBord';
+//import Reservoirs from './pages/Reservoirs';
+//import Capteurs from './pages/Capteurs';
+//import Alertes from './pages/Alertes';
 
 // Composants
 import RouteProtegee from './components/RouteProtegee';
-import Navbar from './components/Navbar';
-import Sidebar from './components/Sidebar';
+//import Navbar from './components/Navbar';
+//import Sidebar from './components/Sidebar';
 
 // Layout global pour les pages authentifiées
 const MainLayout = ({ children }) => {
