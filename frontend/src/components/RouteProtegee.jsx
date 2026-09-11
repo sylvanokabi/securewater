@@ -1,28 +1,26 @@
-
-
-//import React from 'react';
-//import { Navigate, Outlet } from 'react-router-dom';
-
-//const RouteProtegee = () => {
-//  const token = localStorage.getItem('access_token');
-
-  // Si le token est présent, on affiche les pages enfants, sinon redirection
-//  return token ? <Outlet /> : <Navigate to="/connexion" replace />;
-//};
-
-//export default RouteProtegee;
-
-
-
-
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
+import Sidebar from './Sidebar';
+import Navbar from './Navbar';
 
 const RouteProtegee = () => {
-  const token = localStorage.getItem('access_token');
+  const estAuthentifie = true; // Simulé pour l'instant
 
-  // Si le jeton (même fictif) existe, afficher les pages privées avec MainLayout
-  return token ? <Outlet /> : <Navigate to="/connexion" replace />;
+  if (!estAuthentifie) {
+    return <Navigate to="/connexion" replace />;
+  }
+
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Navbar />
+        <main className="p-6 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
 };
 
 export default RouteProtegee;
