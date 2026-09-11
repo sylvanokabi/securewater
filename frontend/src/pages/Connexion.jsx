@@ -1,172 +1,64 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import utilisateurService from '../services/utilisateurService';
+import { useNavigate } from 'react-router-dom';
 
 const Connexion = () => {
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-  });
-  const [erreur, setErreur] = useState('');
-  const [chargement, setChargement] = useState(false);
-
+  const [identifiant, setIdentifiant] = useState('');
+  const [motDePasse, setMotDePasse] = useState('');
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setErreur('');
-    setChargement(true);
-
-    // Simulation d'une connexion réussie côté frontend
-    setTimeout(() => {
-      localStorage.setItem('access_token', 'mock_jwt_token_pour_developpement');
-      setChargement(false);
-      navigate('/');
-    }, 500);
+    // Simulation d'authentification
+    navigate('/tableau-de-bord');
   };
 
- 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.titre}>SecureWater</h2>
-        <p style={styles.sousTitre}>Connexion à la plateforme IoT</p>
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-slate-900">SecureWater</h1>
+          <p className="text-sm text-slate-500 mt-1">Connectez-vous à votre espace de supervision</p>
+        </div>
 
-        {erreur && <div style={styles.erreur}>{erreur}</div>}
-
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.group}>
-            <label style={styles.label}>Nom d'utilisateur</label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Nom d'utilisateur / Email
+            </label>
             <input
               type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
+              value={identifiant}
+              onChange={(e) => setIdentifiant(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all text-slate-800"
+              placeholder="ex: admin"
               required
-              style={styles.input}
-              placeholder="Ex: admin"
             />
           </div>
 
-          <div style={styles.group}>
-            <label style={styles.label}>Mot de passe</label>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Mot de passe
+            </label>
             <input
               type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              style={styles.input}
+              value={motDePasse}
+              onChange={(e) => setMotDePasse(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all text-slate-800"
               placeholder="••••••••"
+              required
             />
           </div>
 
-          <button 
-            type="submit" 
-            disabled={chargement} 
-            style={styles.button}
+          <button
+            type="submit"
+            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-medium py-2.5 rounded-lg transition-colors mt-2"
           >
-            {chargement ? 'Connexion en cours...' : 'Se connecter'}
+            Se connecter
           </button>
         </form>
-
-        <p style={styles.footerText}>
-          Pas encore de compte ?{' '}
-          <Link to="/inscription" style={styles.link}>
-            S'inscrire
-          </Link>
-        </p>
       </div>
     </div>
   );
-};
-
-// Styles inline temporaires (remplaçables par Tailwind ou CSS propre)
-const styles = {
-  container: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100vh',
-    backgroundColor: '#f4f6f9',
-  },
-  card: {
-    width: '100%',
-    maxWidth: '400px',
-    padding: '2rem',
-    borderRadius: '8px',
-    backgroundColor: '#ffffff',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-  },
-  titre: {
-    textAlign: 'center',
-    color: '#007bff',
-    marginBottom: '0.5rem',
-  },
-  sousTitre: {
-    textAlign: 'center',
-    color: '#6c757d',
-    marginBottom: '1.5rem',
-    fontSize: '0.9rem',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  group: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  label: {
-    fontSize: '0.85rem',
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  input: {
-    padding: '0.6rem',
-    borderRadius: '4px',
-    border: '1px solid #ccc',
-    fontSize: '1rem',
-  },
-  button: {
-    padding: '0.75rem',
-    backgroundColor: '#007bff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-  },
-  erreur: {
-    padding: '0.6rem',
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
-    borderRadius: '4px',
-    marginBottom: '1rem',
-    fontSize: '0.85rem',
-    textAlign: 'center',
-  },
-  footerText: {
-    marginTop: '1.5rem',
-    textAlign: 'center',
-    fontSize: '0.85rem',
-    color: '#6c757d',
-  },
-  link: {
-    color: '#007bff',
-    textDecoration: 'none',
-    fontWeight: 'bold',
-  },
 };
 
 export default Connexion;

@@ -2,47 +2,43 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 
 const Sidebar = () => {
-  const linkStyle = ({ isActive }) => ({
-    display: 'block',
-    padding: '12px 20px',
-    color: isActive ? '#3498db' : '#ecf0f1',
-    backgroundColor: isActive ? '#2c3e50' : 'transparent',
-    textDecoration: 'none',
-    fontWeight: isActive ? 'bold' : 'normal',
-    borderRadius: '4px',
-    margin: '4px 0',
-  });
+  const liens = [
+    { path: '/tableau-de-bord', label: 'Tableau de bord' },
+    { path: '/reservoirs', label: 'Réservoirs' },
+    { path: '/capteurs', label: 'Capteurs' },
+    { path: '/alertes', label: 'Alertes' },
+  ];
 
   return (
-    <aside
-      style={{
-        width: '240px',
-        backgroundColor: '#34495e',
-        color: '#fff',
-        padding: '20px 10px',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h2 style={{ margin: 0, color: '#3498db', fontSize: '1.5rem' }}>SecureWater</h2>
-        <span style={{ fontSize: '0.75rem', color: '#bdc3c7' }}>IoT Monitoring Platform</span>
+    <aside className="w-64 bg-slate-900 text-slate-300 min-h-screen p-6 flex flex-col justify-between">
+      <div>
+        <div className="mb-8">
+          <h1 className="text-xl font-bold text-sky-400">SecureWater</h1>
+          <p className="text-xs text-slate-400">IoT Monitoring Platform</p>
+        </div>
+
+        <nav className="flex flex-col gap-2">
+          {liens.map((lien) => (
+            <NavLink
+              key={lien.path}
+              to={lien.path}
+              className={({ isActive }) =>
+                `px-4 py-3 rounded-lg font-medium transition-colors text-sm ${
+                  isActive
+                    ? 'bg-sky-600 text-white'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`
+              }
+            >
+              {lien.label}
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
-      <nav style={{ flex: 1 }}>
-        <NavLink to="/" style={linkStyle}>
-          Tableau de bord
-        </NavLink>
-        <NavLink to="/reservoirs" style={linkStyle}>
-          Réservoirs
-        </NavLink>
-        <NavLink to="/capteurs" style={linkStyle}>
-          Capteurs
-        </NavLink>
-        <NavLink to="/alertes" style={linkStyle}>
-          Alertes
-        </NavLink>
-      </nav>
+      <div className="text-xs text-slate-500 pt-4 border-t border-slate-800">
+        v1.0.0 &bull; SecureWater IoT
+      </div>
     </aside>
   );
 };
