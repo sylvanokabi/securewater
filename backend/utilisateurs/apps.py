@@ -2,4 +2,6 @@ from django.apps import AppConfig
 
 
 class UtilisateursConfig(AppConfig):
-    name = 'utilisateurs'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "utilisateurs"
+    verbose_name = "Gestion des utilisateurs"
