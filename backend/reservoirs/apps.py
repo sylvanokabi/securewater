@@ -2,4 +2,6 @@ from django.apps import AppConfig
 
 
 class ReservoirsConfig(AppConfig):
-    name = 'reservoirs'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "reservoirs"
+    verbose_name = "Gestion des réservoirs"
