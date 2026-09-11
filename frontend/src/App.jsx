@@ -14,19 +14,41 @@ import RouteProtegee from './components/RouteProtegee';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 
-// Layout global pour les pages authentifiées
+// Layout global pour les pages authentifiées (Largeur 100% forcée)
 const MainLayout = ({ children }) => {
   return (
-    <div className="app-layout" style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={styles.appLayout}>
       <Sidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={styles.contentWrapper}>
         <Navbar />
-        <main style={{ padding: '20px', flex: 1, backgroundColor: '#f4f6f8' }}>
+        <main style={styles.mainContent}>
           {children}
         </main>
       </div>
     </div>
   );
+};
+
+const styles = {
+  appLayout: {
+    display: 'flex',
+    minHeight: '100vh',
+    width: '100vw', // Force l'occupation de TOUTE la largeur de l'écran
+    backgroundColor: '#f4f6f8',
+    overflowX: 'hidden',
+  },
+  contentWrapper: {
+    flex: 1, // Prends tout l'espace disponible à droite du Sidebar
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0, // Empêche les éléments enfants de dépasser/réduire le conteneur
+  },
+  mainContent: {
+    padding: '2rem',
+    flex: 1,
+    backgroundColor: '#f4f6f8',
+    boxSizing: 'border-box',
+  },
 };
 
 function App() {

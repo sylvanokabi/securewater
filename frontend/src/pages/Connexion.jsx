@@ -24,20 +24,15 @@ const Connexion = () => {
     setErreur('');
     setChargement(true);
 
-    try {
-      await utilisateurService.connexion(formData);
-      // Redirection vers le tableau de bord après connexion réussie
-      navigate('/');
-    } catch (err) {
-      setErreur(
-        err.response?.data?.detail || 
-        'Identifiants incorrects ou serveur inaccessible.'
-      );
-    } finally {
+    // Simulation d'une connexion réussie côté frontend
+    setTimeout(() => {
+      localStorage.setItem('access_token', 'mock_jwt_token_pour_developpement');
       setChargement(false);
-    }
+      navigate('/');
+    }, 500);
   };
 
+ 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
