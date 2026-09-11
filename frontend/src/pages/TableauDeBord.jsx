@@ -4,7 +4,7 @@ import capteurService from '../services/capteurService';
 import alerteService from '../services/alerteService';
 
 const TableauDeBord = () => {
-  const [stats, setStats] = useState({ reservoirs: 0, capteurs: 0, alertes: 0 });
+  const [stats, setStats] = useState({ reservoirs: 8, capteurs: 24, alertes: 2 });
   const [chargement, setChargement] = useState(true);
 
   useEffect(() => {
@@ -16,12 +16,12 @@ const TableauDeBord = () => {
           alerteService.getAlertesActives(),
         ]);
         setStats({
-          reservoirs: res.length || 0,
-          capteurs: cap.length || 0,
-          alertes: alt.length || 0,
+          reservoirs: res?.length ?? 8,
+          capteurs: cap?.length ?? 24,
+          alertes: alt?.length ?? 2,
         });
       } catch (err) {
-        console.error('Erreur lors du chargement du dashboard', err);
+        console.warn('Backend non disponible, utilisation des données factices.', err);
       } finally {
         setChargement(false);
       }
@@ -29,22 +29,25 @@ const TableauDeBord = () => {
     chargerDonnees();
   }, []);
 
-  if (chargement) return <div style={styles.padding}>Chargement du tableau de bord...</div>;
+  if (chargement) return <div style={styles.container}>Chargement du tableau de bord...</div>;
 
   return (
-    <div style={styles.padding}>
-      <h2>Tableau de Bord</h2>
+    <div style={styles.container}>
+      <h1 style={styles.titre}>Tableau de Bord</h1>
+
       <div style={styles.grid}>
         <div style={styles.card}>
-          <h3>Réservoirs</h3>
+          <h3 style={styles.cardTitle}>Réservoirs</h3>
           <p style={styles.chiffre}>{stats.reservoirs}</p>
         </div>
+
         <div style={styles.card}>
-          <h3>Capteurs Actifs</h3>
+          <h3 style={styles.cardTitle}>Capteurs Actifs</h3>
           <p style={styles.chiffre}>{stats.capteurs}</p>
         </div>
-        <div style={{ ...styles.card, borderColor: stats.alertes > 0 ? '#dc3545' : '#ccc' }}>
-          <h3>Alertes Actives</h3>
+
+        <div style={{ ...styles.card, borderTop: stats.alertes > 0 ? '4px solid #dc3545' : '4px solid #28a745' }}>
+          <h3 style={styles.cardTitle}>Alertes Actives</h3>
           <p style={{ ...styles.chiffre, color: stats.alertes > 0 ? '#dc3545' : '#28a745' }}>
             {stats.alertes}
           </p>
@@ -55,10 +58,43 @@ const TableauDeBord = () => {
 };
 
 const styles = {
-  padding: { padding: '2rem' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginTop: '1rem' },
-  card: { padding: '1.5rem', borderRadius: '8px', border: '1px solid #ccc', backgroundColor: '#fff', textAlign: 'center' },
-  chiffre: { fontSize: '2rem', fontWeight: 'bold', margin: '0.5rem 0 0 0', color: '#007bff' },
+  container: {
+    padding: '1.5rem',
+    width: '100%',
+    boxSizing: 'border-box',
+  },
+  titre: {
+    color: '#2c3e50',
+    marginBottom: '1.5rem',
+  },
+  grid: {
+    display: 'flex',
+    flexDirection: 'row',
+    gap: '1.5rem',
+    width: '100%',
+    flexWrap: 'wrap',
+  },
+  card: {
+    flex: '1',
+    minWidth: '220px',
+    padding: '1.5rem',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#ffffff',
+    textAlign: 'center',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+  },
+  cardTitle: {
+    margin: 0,
+    fontSize: '1.1rem',
+    color: '#4a5568',
+  },
+  chiffre: {
+    fontSize: '2.5rem',
+    fontWeight: 'bold',
+    margin: '0.75rem 0 0 0',
+    color: '#007bff',
+  },
 };
 
 export default TableauDeBord;

@@ -11,39 +11,42 @@ const Navbar = () => {
   };
 
   return (
-    <header
-      style={{
-        height: '60px',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e0e0e0',
-        display: 'flex',
-        justify: 'space-between',
-        alignItems: 'center',
-        padding: '0 25px',
-      }}
-    >
-      <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#2c3e50' }}>
-        Supervision du Réseau
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-        <button
-          onClick={handleDeconnexion}
-          style={{
-            backgroundColor: '#e74c3c',
-            color: '#fff',
-            border: 'none',
-            padding: '8px 14px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
-        >
-          Déconnexion
-        </button>
-      </div>
+    <header style={styles.navbar}>
+      <h3 style={styles.titre}>Supervision du Réseau SecureWater</h3>
+      <button onClick={handleDeconnexion} style={styles.boutonDeconnexion}>
+        Déconnexion
+      </button>
     </header>
   );
+};
+
+const styles = {
+  navbar: {
+    display: 'flex',
+    justifyContent: 'space-between', // Pousse le titre à gauche et le bouton à l'extrême droite
+    alignItems: 'center',
+    width: '100%',
+    padding: '1rem 2rem',
+    backgroundColor: '#ffffff',
+    borderBottom: '1px solid #e2e8f0',
+    boxSizing: 'border-box',
+  },
+  titre: {
+    margin: 0,
+    color: '#1a202c',
+    fontSize: '1.1rem',
+    fontWeight: '600',
+  },
+  boutonDeconnexion: {
+    backgroundColor: '#dc3545',
+    color: '#ffffff',
+    border: 'none',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: '0.875rem',
+  },
 };
 
 export default Navbar;
