@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import GraphiqueDebit from '../components/GraphiqueDebit';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 const Reservoirs = () => {
-  // Un seul réservoir principal
   const [reservoir, setReservoir] = useState({
     id: 1,
     nom: 'Réservoir Source Principal',
-    niveau: 65, // Pourcentage de remplissage
-    capacite: 20000, // Litres
+    niveau: 65,
+    capacite: 20000,
     localisation: 'Station Centrale de Traitement',
-    debitActuel: 120, // L/min
+    debitActuel: 120,
+    statut: 'Opérationnel',
   });
 
   const [donneesDebit, setDonneesDebit] = useState([
@@ -20,35 +21,59 @@ const Reservoirs = () => {
     { temps: '10:20', debit: 122 },
   ]);
 
-  // Simulation en temps réel du niveau d'eau et du débit
+  // Connexion au serveur WebSocket Django Channels
+  const WS_URL = 'ws://localhost:8000/ws/telemetrie/';
+  const { data: websocketData, estConnecte } = useWebSocket(WS_URL);
+
+  // Mise à jour de l'état lors de la réception des trames WebSocket
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    if (websocketData) {
+      const { niveau, debitActuel, temps, statut, nom, localisation, capacite } = websocketData;
 
-      // Varier légèrement le niveau d'eau et le débit
-      const nouveauDebit = Math.floor(110 + Math.random() * 30);
-      const variationNiveau = (Math.random() - 0.48) * 0.5; // Fluctuation minime
-
+      // 1. Mise à jour des informations du réservoir principal
       setReservoir((prev) => ({
         ...prev,
-        niveau: Math.min(100, Math.max(5, parseFloat((prev.niveau + variationNiveau).toFixed(1)))),
-        debitActuel: nouveauDebit,
+        nom: nom || prev.nom,
+        localisation: localisation || prev.localisation,
+        capacite: capacite || prev.capacite,
+        statut: statut || prev.statut,
+        niveau: niveau !== undefined ? niveau : prev.niveau,
+        debitActuel: debitActuel !== undefined ? debitActuel : prev.debitActuel,
       }));
 
-      setDonneesDebit((prev) => {
-        const updated = [...prev, { temps: timeStr, debit: nouveauDebit }];
-        if (updated.length > 10) updated.shift();
-        return updated;
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
+      // 2. Mise à jour de l'historique du graphique de débit
+      if (debitActuel !== undefined) {
+        const timestamp = temps || new Date().toLocaleTimeString();
+        setDonneesDebit((prev) => {
+          const updated = [...prev, { temps: timestamp, debit: debitActuel }];
+          if (updated.length > 10) updated.shift();
+          return updated;
+        });
+      }
+    }
+  }, [websocketData]);
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1000px', margin: '0 auto' }}>
-      <h1 style={{ color: '#0f172a', marginBottom: '1.5rem' }}>Réservoir Source Principal</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <h1 style={{ color: '#0f172a', margin: 0 }}>{reservoir.nom}</h1>
+        
+        {/* Indicateur de statut WebSocket */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              backgroundColor: estConnecte ? '#16a34a' : '#dc2626',
+              display: 'inline-block',
+            }}
+          />
+          <span style={{ fontSize: '0.875rem', color: '#475569', fontWeight: '500' }}>
+            {estConnecte ? 'Temps réel (WebSocket actif)' : 'Mode simulation / Hors ligne'}
+          </span>
+        </div>
+      </div>
 
       <div style={styles.container}>
         {/* Visualisation de la cuve d'eau avec animation d'onde */}
@@ -70,7 +95,7 @@ const Reservoirs = () => {
           </p>
         </div>
 
-        {/* Météorologie / Métriques rapides */}
+        {/* Métriques rapides */}
         <div style={styles.cardInfos}>
           <h3>Spécifications & État</h3>
           <ul style={styles.listeSpec}>
@@ -78,17 +103,22 @@ const Reservoirs = () => {
             <li><strong>Emplacement :</strong> {reservoir.localisation}</li>
             <li><strong>Débit instantané :</strong> {reservoir.debitActuel} L/min</li>
             <li><strong>Capacité maximale :</strong> {reservoir.capacite.toLocaleString()} L</li>
-            <li><strong>Statut :</strong> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>Opérationnel</span></li>
+            <li>
+              <strong>Statut :</strong>{' '}
+              <span style={{ color: reservoir.statut === 'Opérationnel' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                {reservoir.statut}
+              </span>
+            </li>
           </ul>
         </div>
       </div>
 
-      {/* Graphique de débit pour le seul réservoir */}
+      {/* Graphique de débit */}
       <div style={{ marginTop: '2rem' }}>
         <GraphiqueDebit donnees={donneesDebit} />
       </div>
 
-      {/* Style CSS-in-JS pour l'effet de vague/flottement */}
+      {/* Animation CSS-in-JS pour la vague */}
       <style>{`
         @keyframes onduler {
           0% { transform: translateX(0) scaleY(1); }
