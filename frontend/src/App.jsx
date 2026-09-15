@@ -12,20 +12,20 @@ import Alertes from './pages/Alertes';
 // Composants
 import RouteProtegee from './components/RouteProtegee';
 import Navbar from './components/Navbar';
-import Sidebar from './components/Sidebar';
+// import Sidebar from './components/Sidebar';
 
 // Layout global pour les pages authentifiées (Largeur 100% forcée)
 const MainLayout = ({ children }) => {
   return (
-    <div style={styles.appLayout}>
-      <Sidebar />
+    // <div style={styles.appLayout}>
+    //   <Sidebar />
       <div style={styles.contentWrapper}>
-        <Navbar />
+        {/* <Navbar /> */}
         <main style={styles.mainContent}>
           {children}
         </main>
       </div>
-    </div>
+    // </div>
   );
 };
 
