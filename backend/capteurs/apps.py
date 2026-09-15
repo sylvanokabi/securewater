@@ -2,4 +2,6 @@ from django.apps import AppConfig
 
 
 class CapteursConfig(AppConfig):
-    name = 'capteurs'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "capteurs"
+    verbose_name = "Capteurs"
