@@ -1,49 +1,38 @@
-import React, { useEffect, useState } from 'react';
-import alerteService from '../services/alerteService';
-import CarteAlerte from '../components/CarteAlerte';
+import React, { useState } from 'react';
 
 const Alertes = () => {
-  const [alertes, setAlertes] = useState([]);
-  const [chargement, setChargement] = useState(true);
-
-  const chargerAlertes = async () => {
-    try {
-      const data = await alerteService.getAlertes();
-      setAlertes(data);
-    } catch (erreur) {
-      console.error("Erreur lors du chargement des alertes :", erreur);
-    } finally {
-      setChargement(false);
-    }
-  };
-
-  useEffect(() => {
-    chargerAlertes();
-  }, []);
+  const [alertes] = useState([
+    { id: 1, titre: 'Niveau Critique Atteint', description: 'Le niveau du Réservoir Sud est tombé sous le seuil critique (12%).', gravite: 'Critique', horodatage: 'Aujourd\'hui, 10:14' },
+    { id: 2, titre: 'Anomalie de Débit (Pression)', description: 'Baisse inhabituelle détectée sur le Réservoir Est (Suspection de fuite).', gravite: 'Avertissement', horodatage: 'Aujourd\'hui, 08:30' },
+    { id: 3, titre: 'Capteur Hors Ligne', description: 'Le capteur CAP-004 ne répond plus depuis 2 heures.', gravite: 'Info', horodatage: 'Hier, 22:45' },
+  ]);
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Journal des Alertes</h1>
-      <p>Page de gestion et de suivi des alertes et anomalies du réseau.</p>
+    <div className="p-2">
+      <h1 className="text-2xl font-bold text-slate-800 mb-6">Journal des Alertes</h1>
 
-      {chargement ? (
-        <p>Chargement des alertes en cours...</p>
-      ) : alertes.length === 0 ? (
-        <p>Aucune alerte à afficher.</p>
-      ) : (
-        <div style={{ marginTop: '20px' }}>
-          {alertes.map((alerte) => (
-            <CarteAlerte
-              key={alerte.id}
-              titre={alerte.titre || alerte.type}
-              message={alerte.message}
-              niveauUrgence={alerte.niveau || 'AVERTISSEMENT'}
-              horodatage={alerte.date_creation || alerte.created_at}
-              acquittee={alerte.acquittee}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col gap-4">
+        {alertes.map((a) => (
+          <div key={a.id} className={`p-4 rounded-xl border flex items-start justify-between bg-white shadow-sm ${
+            a.gravite === 'Critique' ? 'border-l-4 border-l-rose-500 border-slate-200' :
+            a.gravite === 'Avertissement' ? 'border-l-4 border-l-amber-500 border-slate-200' : 'border-l-4 border-l-sky-500 border-slate-200'
+          }`}>
+            <div>
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold text-slate-800">{a.titre}</h3>
+                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                  a.gravite === 'Critique' ? 'bg-rose-100 text-rose-700' :
+                  a.gravite === 'Avertissement' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'
+                }`}>
+                  {a.gravite}
+                </span>
+              </div>
+              <p className="text-sm text-slate-600 mt-1">{a.description}</p>
+            </div>
+            <span className="text-xs text-slate-400 whitespace-nowrap">{a.horodatage}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
