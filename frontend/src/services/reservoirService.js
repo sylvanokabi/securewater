@@ -1,35 +1,49 @@
-import api from './api';
+const API_URL = 'http://127.0.0.1:8000/api/reservoirs';
 
-const reservoirService = {
-  // Lister tous les réservoirs
-  async getReservoirs() {
-    const response = await api.get('reservoirs/');
-    return response.data;
-  },
-
-  // Obtenir le détail d'un réservoir par son ID
-  async getReservoirById(id) {
-    const response = await api.get(`reservoirs/${id}/`);
-    return response.data;
-  },
-
-  // Ajouter un nouveau réservoir
-  async creerReservoir(data) {
-    const response = await api.post('reservoirs/', data);
-    return response.data;
-  },
-
-  // Mettre à jour un réservoir
-  async modifierReservoir(id, data) {
-    const response = await api.put(`reservoirs/${id}/`, data);
-    return response.data;
-  },
-
-  // Supprimer un réservoir
-  async supprimerReservoir(id) {
-    const response = await api.delete(`reservoirs/${id}/`);
-    return response.data;
-  },
+const getHeaders = () => {
+  const token = localStorage.getItem('access_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
 };
 
-export default reservoirService;
+const handleResponse = async (response) => {
+  if (response.status === 401) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    window.location.href = '/connexion';
+    throw new Error('Session expirée, veuillez vous reconnecter.');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(JSON.stringify(errorData));
+  }
+  return response;
+};
+
+export const getReservoirsAPI = async () => {
+  const response = await fetch(`${API_URL}/`, { headers: getHeaders() });
+  await handleResponse(response);
+  const data = await response.json();
+  return Array.isArray(data) ? data : data.results || [];
+};
+
+export const creerReservoirAPI = async (payload) => {
+  const response = await fetch(`${API_URL}/`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  });
+  await handleResponse(response);
+  return await response.json();
+};
+
+export const supprimerReservoirAPI = async (id) => {
+  const response = await fetch(`${API_URL}/${id}/`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  await handleResponse(response);
+  return true;
+};
