@@ -35,7 +35,14 @@ const Inscription = () => {
     setChargement(true);
 
     try {
-      const { confirmPassword, ...dataAEnvoyer } = formData;
+      // Transformation des données pour correspondre aux clés attendues par le Serializer Django
+      const dataAEnvoyer = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        password_confirm: formData.confirmPassword, // Transmission de la clé obligatoire demandée par le backend
+      };
+
       await inscriptionAPI(dataAEnvoyer);
       
       setSucces('Compte créé avec succès ! Redirection vers la page de connexion...');
