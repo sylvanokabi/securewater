@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { connexionAPI } from '../services/auth';
 
 const Connexion = () => {
-  const [identifiant, setIdentifiant] = useState('');
-  const [motDePasse, setMotDePasse] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [erreur, setErreur] = useState('');
   const [chargement, setChargement] = useState(false);
-  
+
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -16,11 +16,10 @@ const Connexion = () => {
     setChargement(true);
 
     try {
-      // Envoie les identifiants à l'API Django JWT
-      await connexionAPI(identifiant, motDePasse);
-      navigate('/tableau-de-bord');
+      await connexionAPI(email, password);
+      navigate('/');
     } catch (err) {
-      setErreur(err.message || 'Identifiants incorrects ou serveur indisponible.');
+      setErreur(err.message || 'Identifiants invalides.');
     } finally {
       setChargement(false);
     }
@@ -31,27 +30,28 @@ const Connexion = () => {
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-slate-900">SecureWater</h1>
-          <p className="text-sm text-slate-500 mt-1">Connectez-vous à votre espace de supervision</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Connectez-vous à votre espace de supervision
+          </p>
         </div>
 
-        {/* Affichage d'erreur d'authentification */}
         {erreur && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg flex items-center gap-2">
-            <span className="font-semibold">Attention :</span> {erreur}
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
+            {erreur}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Nom d'utilisateur / Email
+              Adresse Email
             </label>
             <input
-              type="text"
-              value={identifiant}
-              onChange={(e) => setIdentifiant(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all text-slate-800"
-              placeholder="ex: admin"
+              placeholder="Ex: vano@gmail.com"
               required
               disabled={chargement}
             />
@@ -63,8 +63,8 @@ const Connexion = () => {
             </label>
             <input
               type="password"
-              value={motDePasse}
-              onChange={(e) => setMotDePasse(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all text-slate-800"
               placeholder="••••••••"
               required
@@ -87,6 +87,13 @@ const Connexion = () => {
             )}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Vous n'avez pas de compte ?{' '}
+          <Link to="/inscription" className="text-sky-600 hover:text-sky-700 font-semibold">
+            S'inscrire
+          </Link>
+        </p>
       </div>
     </div>
   );
