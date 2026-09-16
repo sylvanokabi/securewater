@@ -1,12 +1,10 @@
-from rest_framework.permissions import BasePermission,SAFE_METHODS
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from .models import Utilisateur
 
 
 class EstAdministrateur(BasePermission):
-    """
-    Autorise uniquement les utilisateurs ayant le rôle Administrateur.
-    """
+    """Autorise uniquement les utilisateurs ayant le rôle Administrateur."""
 
     message = "Cette action nécessite le rôle Administrateur."
 
@@ -19,9 +17,7 @@ class EstAdministrateur(BasePermission):
 
 
 class EstOperateur(BasePermission):
-    """
-    Autorise les Administrateurs et Opérateurs.
-    """
+    """Autorise les Administrateurs et Opérateurs."""
 
     message = "Cette action nécessite le rôle Administrateur ou Opérateur."
 
@@ -36,10 +32,7 @@ class EstOperateur(BasePermission):
 
 
 class EstAdministrateurOuOperateur(BasePermission):
-    """
-    Alias explicite pour les opérations métier nécessitant
-    un Administrateur ou un Opérateur.
-    """
+    """Alias explicite pour les opérations métier nécessitant un Administrateur ou un Opérateur."""
 
     message = "Cette action nécessite le rôle Administrateur ou Opérateur."
 
@@ -54,7 +47,7 @@ class EstAdministrateurOuOperateur(BasePermission):
 
 
 class LectureSeule(BasePermission):
-    """Autorise uniquement les méthodes GET/HEAD/OPTIONS."""
+    """Autorise uniquement les méthodes HTTP de lecture (GET, HEAD, OPTIONS)."""
 
     def has_permission(self, request, view):
         return request.method in SAFE_METHODS
