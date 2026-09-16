@@ -1,23 +1,39 @@
-import api from './api';
+const API_URL = 'http://127.0.0.1:8000/api/alertes';
 
-const alerteService = {
-  // Récupérer toutes les alertes (avec filtres optionnels : non lues, critiques...)
-  async getAlertes(params = {}) {
-    const response = await api.get('alertes/', { params });
-    return response.data;
-  },
-
-  // Marquer une alerte comme lue ou résolue
-  async marquerCommeLue(alerteId) {
-    const response = await api.patch(`alertes/${alerteId}/`, { lue: true });
-    return response.data;
-  },
-
-  // Obtenir le résumé des alertes actives pour le Dashboard
-  async getAlertesActives() {
-    const response = await api.get('alertes/actives/');
-    return response.data;
-  },
+const getHeaders = () => {
+  const token = localStorage.getItem('access_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
 };
 
-export default alerteService;
+const handleResponse = async (response) => {
+  if (response.status === 401) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    window.location.href = '/connexion';
+    throw new Error('Session expirée, veuillez vous reconnecter.');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(JSON.stringify(errorData));
+  }
+  return response;
+};
+
+export const getAlertesAPI = async () => {
+  const response = await fetch(`${API_URL}/`, { headers: getHeaders() });
+  await handleResponse(response);
+  const data = await response.json();
+  return Array.isArray(data) ? data : data.results || [];
+};
+
+export const acquitterAlerteAPI = async (alerteId) => {
+  const response = await fetch(`${API_URL}/${alerteId}/acquitter/`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  await handleResponse(response);
+  return await response.json();
+};
