@@ -6,6 +6,7 @@ const Inscription = () => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
+    role: 'OBSERVATEUR', // Valeur par défaut correspondant aux choix du modèle Django
     password: '',
     confirmPassword: '',
   });
@@ -35,12 +36,13 @@ const Inscription = () => {
     setChargement(true);
 
     try {
-      // Transformation des données pour correspondre aux clés attendues par le Serializer Django
+      // Transformation des données incluant le rôle envoyé au Serializer Django
       const dataAEnvoyer = {
         username: formData.username,
         email: formData.email,
+        role: formData.role,
         password: formData.password,
-        password_confirm: formData.confirmPassword, // Transmission de la clé obligatoire demandée par le backend
+        password_confirm: formData.confirmPassword,
       };
 
       await inscriptionAPI(dataAEnvoyer);
@@ -108,6 +110,23 @@ const Inscription = () => {
               required
               disabled={chargement}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Rôle
+            </label>
+            <select
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all text-slate-800 bg-white"
+              disabled={chargement}
+            >
+              <option value="OBSERVATEUR">Observateur</option>
+              <option value="OPERATEUR">Opérateur</option>
+              <option value="ADMINISTRATEUR">Administrateur</option>
+            </select>
           </div>
 
           <div>
