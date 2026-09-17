@@ -16,8 +16,8 @@ const handleResponse = async (response) => {
     throw new Error('Session expirée, veuillez vous reconnecter.');
   }
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(JSON.stringify(errorData));
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || JSON.stringify(errorData));
   }
   return response;
 };
@@ -29,7 +29,8 @@ export const getAlertesAPI = async () => {
   return Array.isArray(data) ? data : data.results || [];
 };
 
-export const acquitterAlerteAPI = async (alerteId) => {
+// Exportation sous le nom 'resoudreAlerteAPI' attendu par Alertes.jsx
+export const resoudreAlerteAPI = async (alerteId) => {
   const response = await fetch(`${API_URL}/${alerteId}/acquitter/`, {
     method: 'POST',
     headers: getHeaders(),
@@ -37,3 +38,6 @@ export const acquitterAlerteAPI = async (alerteId) => {
   await handleResponse(response);
   return await response.json();
 };
+
+// Alias conservé si d'autres composants utilisent acquitterAlerteAPI
+export const acquitterAlerteAPI = resoudreAlerteAPI;

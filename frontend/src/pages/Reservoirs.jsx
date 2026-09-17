@@ -39,9 +39,11 @@ const Reservoirs = () => {
     try {
       setChargement(true);
       const data = await getReservoirsAPI();
-      setListeReservoirs(data);
-      if (data.length > 0) {
-        const premier = data[0];
+      const liste = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+      setListeReservoirs(liste);
+      
+      if (liste.length > 0) {
+        const premier = liste[0];
         setReservoirSelectionneId(premier.id);
         initialiserReservoir(premier);
       }
@@ -77,47 +79,58 @@ const Reservoirs = () => {
 
   // 2. MISE À JOUR EN TEMPS RÉEL VIA WEBSOCKET
   useEffect(() => {
-    if (websocketData && reservoir) {
-      // Filtrer les trames destinées au réservoir sélectionné
-      const correspondAuReservoir = 
-        !websocketData.reservoir_id || 
-        websocketData.reservoir_id === reservoirSelectionneId || 
-        websocketData.code === reservoir.code;
+    if (!websocketData || !reservoir) return;
 
-      if (correspondAuReservoir) {
-        const nouveauNiveau = websocketData.niveau !== undefined ? websocketData.niveau : reservoir.niveauActuel;
-        const nouveauDebit = websocketData.debitActuel !== undefined ? websocketData.debitActuel : reservoir.debitActuel;
+    // Détection flexibilisée de la correspondance du réservoir
+    const targetId = websocketData.reservoir_id || websocketData.reservoir || websocketData.id;
+    const targetCode = websocketData.code || websocketData.code_mqtt;
 
-        // Mise à jour instantanée de l'état
-        setReservoir((prev) => ({
-          ...prev,
-          niveauActuel: Math.min(Math.max(nouveauNiveau, 0), 100), // Borner entre 0 et 100%
-          debitActuel: nouveauDebit,
-          statut: websocketData.statut || prev.statut,
-        }));
+    const correspondAuReservoir = 
+      !targetId || 
+      Number(targetId) === Number(reservoirSelectionneId) || 
+      targetCode === reservoir.code;
 
-        // Mise à jour de l'historique du débit pour le graphique
-        if (nouveauDebit !== undefined) {
-          const timestamp = websocketData.temps || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          setDonneesDebit((prev) => {
-            const updated = [...prev, { temps: timestamp, debit: nouveauDebit }];
-            if (updated.length > 12) updated.shift(); // Conserver les 12 dernières mesures
-            return updated;
-          });
-        }
+    if (correspondAuReservoir) {
+      // Récupération de la valeur du niveau (cm, % ou valeur brute)
+      let niveauRecu = websocketData.niveau_pourcentage ?? websocketData.niveau ?? websocketData.niveauActuel;
+      
+      // Si la donnée reçue est en cm, conversion en pourcentage
+      if (websocketData.niveau_cm !== undefined && reservoir.hauteur_max_cm) {
+        niveauRecu = (websocketData.niveau_cm / reservoir.hauteur_max_cm) * 100;
+      }
+
+      const nouveauNiveau = niveauRecu !== undefined ? Math.min(Math.max(parseFloat(niveauRecu), 0), 100) : reservoir.niveauActuel;
+      const nouveauDebit = websocketData.debit_l_min ?? websocketData.debitActuel ?? websocketData.debit ?? reservoir.debitActuel;
+
+      // Mise à jour instantanée de l'état
+      setReservoir((prev) => ({
+        ...prev,
+        niveauActuel: Math.round(nouveauNiveau * 10) / 10, // Arrondir à 1 décimale
+        debitActuel: parseFloat(nouveauDebit) || 0,
+        statut: websocketData.statut || prev.statut,
+      }));
+
+      // Mise à jour de l'historique du débit pour le graphique
+      if (nouveauDebit !== undefined) {
+        const timestamp = websocketData.temps || websocketData.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setDonneesDebit((prev) => {
+          const updated = [...prev, { temps: timestamp, debit: parseFloat(nouveauDebit) || 0 }];
+          if (updated.length > 15) updated.shift(); // Conserver les 15 dernières mesures
+          return updated;
+        });
       }
     }
   }, [websocketData, reservoirSelectionneId]);
 
-  // Fonction pour déterminer la couleur de l'eau selon les seuils SQL
+  // Fonction pour déterminer la couleur de l'eau selon les seuils
   const ObtenirCouleurSeuil = () => {
     if (!reservoir) return '#0284c7';
     const niv = reservoir.niveauActuel;
     
-    if (niv <= reservoir.seuil_critique_bas || niv >= reservoir.seuil_critique_haut) {
-      return '#ef4444'; // Rouge alert
+    if (niv <= parseFloat(reservoir.seuil_critique_bas) || niv >= parseFloat(reservoir.seuil_critique_haut)) {
+      return '#ef4444'; // Rouge alerte critique
     }
-    if (niv <= reservoir.seuil_alerte_bas || niv >= reservoir.seuil_alerte_haut) {
+    if (niv <= parseFloat(reservoir.seuil_alerte_bas) || niv >= parseFloat(reservoir.seuil_alerte_haut)) {
       return '#f97316'; // Orange alerte
     }
     return '#0284c7'; // Bleu normal
@@ -149,7 +162,7 @@ const Reservoirs = () => {
       setModalOuvert(false);
       chargerDonnees();
     } catch (err) {
-      alert(`Erreur de validation: ${err.message}`);
+      alert(`Erreur de création: ${err.message}`);
     }
   };
 
@@ -164,9 +177,10 @@ const Reservoirs = () => {
     }
   };
 
-  if (chargement) return <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Chargement du système temps réel...</div>;
+  if (chargement) return <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Chargement des réservoirs...</div>;
 
-  const volumeLitresActuel = reservoir ? ((reservoir.capacite_max_litres * reservoir.niveauActuel) / 100).toFixed(0) : 0;
+  const capMax = parseFloat(reservoir?.capacite_max_litres) || 10000;
+  const volumeLitresActuel = reservoir ? ((capMax * reservoir.niveauActuel) / 100).toFixed(0) : 0;
   const couleurEau = ObtenirCouleurSeuil();
 
   return (
@@ -214,7 +228,7 @@ const Reservoirs = () => {
 
       {reservoir && (
         <div style={styles.container}>
-          {/* CUVE D'EAU ANIME EN TEMPS REEL */}
+          {/* CUVE D'EAU ANIMÉE EN TEMPS RÉEL */}
           <div style={styles.cardCuve}>
             <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>Niveau d'Eau (Temps Réel)</h3>
             <div style={styles.cuveOuter}>
@@ -231,7 +245,7 @@ const Reservoirs = () => {
             </div>
             
             <p style={{ marginTop: '1.25rem', fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>
-              {Number(volumeLitresActuel).toLocaleString()} / {reservoir.capacite_max_litres.toLocaleString()} L
+              {Number(volumeLitresActuel).toLocaleString()} / {capMax.toLocaleString()} L
             </p>
           </div>
 
@@ -246,8 +260,8 @@ const Reservoirs = () => {
             
             <ul style={styles.listeSpec}>
               <li><strong>Débit instantané :</strong> <span style={{ color: '#0284c7', fontWeight: 'bold' }}>{reservoir.debitActuel} L/min</span></li>
-              <li><strong>Localisation :</strong> {reservoir.localisation}</li>
-              <li><strong>Description :</strong> {reservoir.description}</li>
+              <li><strong>Localisation :</strong> {reservoir.localisation || 'N/A'}</li>
+              <li><strong>Description :</strong> {reservoir.description || 'N/A'}</li>
               <li><strong>Coordonnées GPS :</strong> {reservoir.latitude || '-'}, {reservoir.longitude || '-'}</li>
               <li><strong>Hauteur Maximale :</strong> {reservoir.hauteur_max_cm} cm</li>
               <li><strong>Seuils d'Alerte (Bas / Haut) :</strong> {reservoir.seuil_alerte_bas}% / {reservoir.seuil_alerte_haut}%</li>
@@ -269,7 +283,7 @@ const Reservoirs = () => {
         <GraphiqueDebit donnees={donneesDebit} />
       </div>
 
-      {/* MODAL CREATION RESERVOIR */}
+      {/* MODAL CRÉATION RÉSERVOIR */}
       {modalOuvert && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>

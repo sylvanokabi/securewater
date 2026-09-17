@@ -6,17 +6,22 @@ export const useWebSocket = (url) => {
   const ws = useRef(null);
 
   useEffect(() => {
+    // Ne pas tenter de connexion si l'URL est indéfinie
+    if (!url) return;
+
     const token = localStorage.getItem('access_token');
     const wsUrl = token ? `${url}?token=${token}` : url;
 
-    ws.current = new WebSocket(wsUrl);
+    // Définition de l'instance WebSocket
+    const socket = new WebSocket(wsUrl);
+    ws.current = socket;
 
-    ws.current.onopen = () => {
+    socket.onopen = () => {
       console.log('Connexion WebSocket établie avec le serveur.');
       setEstConnecte(true);
     };
 
-    ws.current.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
         const parsedData = JSON.parse(event.data);
         setData(parsedData);
@@ -25,18 +30,19 @@ export const useWebSocket = (url) => {
       }
     };
 
-    ws.current.onclose = () => {
-      console.log('Connexion WebSocket fermée.');
+    socket.onclose = (e) => {
+      console.log(`Connexion WebSocket fermée. Code: ${e.code}`);
       setEstConnecte(false);
     };
 
-    ws.current.onerror = (error) => {
+    socket.onerror = (error) => {
       console.error('Erreur WebSocket :', error);
     };
 
+    // Nettoyage lors du démonte du composant
     return () => {
-      if (ws.current) {
-        ws.current.close();
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        socket.close();
       }
     };
   }, [url]);

@@ -71,12 +71,4 @@ class ReservoirListeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Reservoir
-        fields = [
-            "id",
-            "nom",
-            "code",
-            "localisation",
-            "capacite_max_litres",
-            "statut",
-            "date_modification",
-        ]
+        fields = '__all__'
