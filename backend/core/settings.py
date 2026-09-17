@@ -332,8 +332,8 @@ if not DEBUG:
 
 
 MQTT_CONFIG = {
-    "HOST": env("MQTT_BROKER_HOST", "127.0.0.1","localhost"),
-    "PORT": int(env("MQTT_BROKER_PORT", "8883")),
+    "HOST": env("MQTT_BROKER_HOST", "127.0.0.1"),
+    "PORT": int(env("MQTT_BROKER_PORT", "1883")),
     "USERNAME": env("MQTT_USERNAME", ""),
     "PASSWORD": env("MQTT_PASSWORD", ""),
     "CA_CERT": env("MQTT_CA_CERT", ""),
