@@ -31,8 +31,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
 
 class InscriptionSerializer(serializers.ModelSerializer):
-        
-    """Inscription publique — crée un compte observateur par défaut."""
+    """Inscription — permet de choisir un rôle (OBSERVATEUR par défaut si non spécifié)."""
 
     password = serializers.CharField(
         write_only=True,
@@ -50,8 +49,11 @@ class InscriptionSerializer(serializers.ModelSerializer):
             "password_confirm",
             "first_name",
             "last_name",
-            
+            "role",
         ]
+        extra_kwargs = {
+            "role": {"required": False},
+        }
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password_confirm"]:
@@ -61,18 +63,18 @@ class InscriptionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
+        
+        # Récupère le rôle soumis ou applique OBSERVATEUR si absent
+        role = validated_data.pop("role", Utilisateur.Role.OBSERVATEUR)
+
         user = Utilisateur(**validated_data)
-        user.role = Utilisateur.Role.OBSERVATEUR  # forcé à l'inscription
+        user.role = role
         user.set_password(password)
         user.save()
         return user
-    
-
-
 
 
 class ProfilSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Utilisateur
         fields = [
@@ -99,7 +101,6 @@ class ProfilSerializer(serializers.ModelSerializer):
 
 
 class GestionUtilisateurSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Utilisateur
         fields = [
@@ -135,7 +136,6 @@ class ConnexionSerializer(TokenObtainPairSerializer):
         token["role"] = user.role
 
         return token
-
 
     def validate(self, attrs):
         data = super().validate(attrs)
