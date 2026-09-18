@@ -1,35 +1,57 @@
 // src/hooks/useReservoir.js
 import { useState, useEffect } from 'react';
-import api from '../services/api';
 
-export function useReservoir(reservoirIdOuCode) {
-  const [reservoir, setReservoir] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+const MOCK_RESERVOIR = {
+  id: 1,
+  nom: 'Réservoir Principal (Simulé)',
+  code: 'RES-001',
+  code_mqtt: 'water/res_001',
+  description: 'Cuve de stockage principale - Simulation autonome',
+  localisation: 'Kinshasa - Central',
+  capacite_max_litres: 10000,
+  hauteur_max_cm: 300,
+  seuil_critique_bas: 10,
+  seuil_alerte_bas: 25,
+  seuil_alerte_haut: 90,
+  seuil_critique_haut: 95,
+  statut: 'actif',
+};
+
+export function useReservoir() {
+  const [reservoir, setReservoir] = useState({
+    ...MOCK_RESERVOIR,
+    niveauActuel: 50,
+    debitActuel: 120,
+  });
+  const [loading] = useState(false);
+  const [error] = useState(null);
 
   useEffect(() => {
-    if (!reservoirIdOuCode) return;
+    let direction = 1; // 1 = remplissage, -1 = vidange
 
-    const fetchData = async () => {
-      try {
-        const response = await api.get(`/reservoirs/${reservoirIdOuCode}/`);
-        setReservoir(response.data);
-        setError(null);
-      } catch (err) {
-        console.error("Erreur lors de la récupération des télémétries :", err);
-        setError(err.message || "Erreur de chargement");
-      } finally {
-        setLoading(false);
-      }
-    };
+    const interval = setInterval(() => {
+      setReservoir((prev) => {
+        let nxt = prev.niveauActuel + direction * 1.5;
+        let debit = Math.round((120 + Math.sin(Date.now() / 1000) * 20) * 10) / 10;
 
-    fetchData(); // Premier appel immédiat
+        if (nxt >= 98) {
+          direction = -1;
+          nxt = 98;
+        } else if (nxt <= 5) {
+          direction = 1;
+          nxt = 5;
+        }
 
-    // Polling toutes les 3 secondes (aligné sur le rythme du simulateur)
-    const interval = setInterval(fetchData, 3000);
+        return {
+          ...prev,
+          niveauActuel: Math.round(nxt * 10) / 10,
+          debitActuel: debit,
+        };
+      });
+    }, 500);
 
-    return () => clearInterval(interval); // Nettoyage lors du démontage du composant
-  }, [reservoirIdOuCode]);
+    return () => clearInterval(interval);
+  }, []);
 
   return { reservoir, loading, error };
 }
