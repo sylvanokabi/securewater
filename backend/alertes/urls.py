@@ -13,14 +13,14 @@ app_name = "alertes"
 
 urlpatterns = [
     # Lecture
-    path("", ListeAlertesView.as_view(), name="liste"),
-    path("statistiques/", StatistiquesAlertesView.as_view(), name="statistiques"),
-    path("<int:pk>/", DetailAlerteView.as_view(), name="detail"),
+    path("alertes/", ListeAlertesView.as_view(), name="liste"),
+    path("alertes/statistiques/", StatistiquesAlertesView.as_view(), name="statistiques"),
+    path("alertes/<int:pk>/", DetailAlerteView.as_view(), name="detail"),
 
     # Cycle de vie
-    path("<int:pk>/acquitter/", AcquitterAlerteView.as_view(), name="acquitter"),
-    path("<int:pk>/resoudre/", ResoudreAlerteView.as_view(), name="resoudre"),
+    path("alertes/<int:pk>/acquitter/", AcquitterAlerteView.as_view(), name="acquitter"),
+    path("alertes/<int:pk>/resoudre/", ResoudreAlerteView.as_view(), name="resoudre"),
 
     # Création manuelle
-    path("manuel/", CreerAlerteManuelleView.as_view(), name="creer-manuelle"),
+    path("alertes/manuel/", CreerAlerteManuelleView.as_view(), name="creer-manuelle"),
 ]

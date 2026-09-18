@@ -1,9 +1,10 @@
 from django.shortcuts import get_object_or_404
 
-from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.exceptions import ValidationError
 
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -27,16 +28,18 @@ from .services import (
 class InscriptionView(generics.CreateAPIView):
     """
     Création d'un compte utilisateur.
-    Le rôle est transmis dans le payload (par défaut OBSERVATEUR si omis).
     """
+
     serializer_class = InscriptionSerializer
     permission_classes = [AllowAny]
+
 
 
 class ConnexionView(TokenObtainPairView):
     """
     Authentification JWT.
     """
+
     serializer_class = ConnexionSerializer
 
     def post(self, request, *args, **kwargs):
@@ -50,13 +53,14 @@ class ConnexionView(TokenObtainPairView):
                 mettre_a_jour_derniere_connexion(utilisateur)
 
         return response
-
+    
 
 class ProfilView(generics.RetrieveUpdateAPIView):
     """
-    Consultation et modification du profil de l'utilisateur authentifié.
-    Note : Le champ 'role' doit être en 'read_only=True' dans ProfilSerializer.
+    Consultation et modification du profil
+    de l'utilisateur authentifié.
     """
+
     serializer_class = ProfilSerializer
     permission_classes = [IsAuthenticated]
 
@@ -66,8 +70,9 @@ class ProfilView(generics.RetrieveUpdateAPIView):
 
 class ListeUtilisateursView(generics.ListAPIView):
     """
-    Liste de tous les utilisateurs (Réservé aux Administrateurs).
+    Liste des utilisateurs.
     """
+
     queryset = Utilisateur.objects.all().order_by("id")
     serializer_class = UtilisateurSerializer
     permission_classes = [EstAdministrateur]
@@ -75,20 +80,24 @@ class ListeUtilisateursView(generics.ListAPIView):
 
 class DetailUtilisateurView(generics.RetrieveUpdateAPIView):
     """
-    Consultation et modification d'un utilisateur, y compris son rôle (Réservé aux Administrateurs).
+    Consultation et modification d'un utilisateur.
     """
+
     queryset = Utilisateur.objects.all()
     serializer_class = GestionUtilisateurSerializer
     permission_classes = [EstAdministrateur]
+
     lookup_url_kwarg = "utilisateur_id"
 
 
 class ActiverUtilisateurView(generics.UpdateAPIView):
     """
-    Active un compte utilisateur (Réservé aux Administrateurs).
+    Active un compte utilisateur.
     """
+
     queryset = Utilisateur.objects.all()
     permission_classes = [EstAdministrateur]
+
     lookup_url_kwarg = "utilisateur_id"
 
     def update(self, request, *args, **kwargs):
@@ -96,17 +105,25 @@ class ActiverUtilisateurView(generics.UpdateAPIView):
             Utilisateur,
             id=kwargs["utilisateur_id"],
         )
+
         activer_utilisateur(utilisateur)
+
         serializer = GestionUtilisateurSerializer(utilisateur)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class DesactiverUtilisateurView(generics.UpdateAPIView):
     """
-    Désactive un compte utilisateur (Réservé aux Administrateurs).
+    Désactive un compte utilisateur.
     """
+
     queryset = Utilisateur.objects.all()
     permission_classes = [EstAdministrateur]
+
     lookup_url_kwarg = "utilisateur_id"
 
     def update(self, request, *args, **kwargs):
@@ -114,24 +131,18 @@ class DesactiverUtilisateurView(generics.UpdateAPIView):
             Utilisateur,
             id=kwargs["utilisateur_id"],
         )
+
         desactiver_utilisateur(utilisateur)
+
         serializer = GestionUtilisateurSerializer(utilisateur)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-class SupprimerUtilisateurView(generics.DestroyAPIView):
-    """
-    Supprime un utilisateur avec contrôle des règles métier (Réservé aux Administrateurs).
-    """
-    queryset = Utilisateur.objects.all()
-    permission_classes = [EstAdministrateur]
-    lookup_url_kwarg = "utilisateur_id"
-
-    def delete(self, request, *args, **kwargs):
-        utilisateur = get_object_or_404(
-            Utilisateur, 
-            id=kwargs["utilisateur_id"]
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
         )
+
+    def delete(self, request, utilisateur_id):   
+        utilisateur = get_object_or_404(Utilisateur, id=utilisateur_id)
         demandeur = request.user
 
         try:
@@ -140,7 +151,7 @@ class SupprimerUtilisateurView(generics.DestroyAPIView):
                 {"message": "Utilisateur supprimé avec succès."},
                 status=status.HTTP_204_NO_CONTENT,
             )
-        except ValidationError as e:
+        except ValidationError as e:              
             return Response(
                 {"error": e.detail},
                 status=status.HTTP_400_BAD_REQUEST,

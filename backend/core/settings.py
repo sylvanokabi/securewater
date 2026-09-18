@@ -80,11 +80,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-
-    # Documentation API
-    'drf_spectacular',
-     'corsheaders', 
-
 #ajout des applications personnalisées
     'utilisateurs',
     'rest_framework',
@@ -94,11 +89,9 @@ INSTALLED_APPS = [
     'capteurs',
     'alertes',
     'temps_reel',
-    'communication_mqtt'
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -109,15 +102,6 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'core.urls'
-
-# ⚠️ Uniquement en dev !
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-
-CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
-
-
-
-
 
 TEMPLATES = [
     {
@@ -236,50 +220,7 @@ REST_FRAMEWORK = {
     # 👇 AJOUTER CES DEUX LIGNES
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-
-        # 👇 AJOUTER CETTE LIGNE
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
-
-
-SPECTACULAR_SETTINGS = {
-    # Infos générales affichées en haut de la doc
-    "TITLE": "SecureWater API",
-    "DESCRIPTION": (
-        "API backend du projet SecureWater.\n\n"
-        "**Authentification** : JWT (Bearer).\n"
-        "1. `POST /api/token/` avec `{username, password}` → récupère `access` et `refresh`.\n"
-        "2. Clique sur le bouton **Authorize** en haut à droite et colle `Bearer <access>`.\n"
-        "3. Rafraîchis avec `POST /api/token/refresh/` (durée de vie access : 15 min)."
-    ),
-    "VERSION": "1.0.0",
-    "CONTACT": {"name": "Équipe Backend", "email": "backend@securewater.local"},
-
-    # Format du schéma
-    "SERVE_INCLUDE_SCHEMA": False,   # ne pas afficher /api/schema/ dans la doc
-
-    # 👇 AJOUT : bouton "Authorize" avec JWT dans Swagger UI
-    "SECURITY": [{"jwtAuth": []}],
-    "APPEND_COMPONENTS": {
-        "securitySchemes": {
-            "jwtAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-            }
-        }
-    },
-
-    # URLs exclues de la doc (endpoints techniques)
-    "SCHEMA_PATH_PREFIX": "/api",   # ne documente que ce qui commence par /api
-
-    # Tri des endpoints dans l'UI
-    "SORT_OPERATIONS": True,
-
-    # En dev, permet de voir les détails d'erreur du schéma
-    "DISABLE_ERRORS_AND_WARNINGS": not DEBUG,  # en dev → False (affiche les warnings)
-}
-
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
@@ -329,61 +270,3 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
-
-
-MQTT_CONFIG = {
-    "HOST": env("MQTT_BROKER_HOST", "127.0.0.1"),
-    "PORT": int(env("MQTT_BROKER_PORT", "1883")),
-    "USERNAME": env("MQTT_USERNAME", ""),
-    "PASSWORD": env("MQTT_PASSWORD", ""),
-    "CA_CERT": env("MQTT_CA_CERT", ""),
-    "CLIENT_CERT": env("MQTT_CLIENT_CERT", ""),
-    "CLIENT_KEY": env("MQTT_CLIENT_KEY", ""),
-    "CLIENT_ID": env("MQTT_CLIENT_ID", "securewater-backend"),
-    "KEEPALIVE": int(env("MQTT_KEEPALIVE", "60")),
-    "QOS": int(env("MQTT_QOS", "1")),
-}
-
-
-
-# =========================================================
-# CORS
-# =========================================================
-CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", DEBUG)
-CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
-CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES")
-
-# Autoriser l'envoi des cookies / credentials (si le front utilise withCredentials)
-CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", True)
-
-# Headers autorisés dans les requêtes du front
-CORS_ALLOW_HEADERS = [
-    "accept",
-    "accept-encoding",
-    "authorization",        # 👈 INDISPENSABLE pour le JWT Bearer
-    "content-type",
-    "dnt",
-    "origin",
-    "user-agent",
-    "x-csrftoken",
-    "x-requested-with",
-]
-
-# Méthodes HTTP autorisées
-CORS_ALLOW_METHODS = [
-    "DELETE",
-    "GET",
-    "OPTIONS",
-    "PATCH",
-    "POST",
-    "PUT",
-]
-
-# Durée de cache du preflight (en secondes) — évite les OPTIONS répétés
-CORS_PREFLIGHT_MAX_AGE = 86400  # 24h
-
-# Exposer des headers custom au front (ex: pagination)
-CORS_EXPOSE_HEADERS = [
-    "content-type",
-    "x-csrftoken",
-]
