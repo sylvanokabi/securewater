@@ -23,6 +23,9 @@ def _diffuser(groupe: str, type_message: str, payload: dict):
     """
     Envoie un message dans un groupe Channels.
 
+    Diffuse AUSSI dans le groupe global "telemetrie" pour les clients
+    qui écoutent /ws/telemetrie/ (dashboard global).
+
     `type_message` doit correspondre à une méthode du consumer :
         "mesure.nouvelle"  → consumer.mesure_nouvelle()
         "alerte.nouvelle"  → consumer.alerte_nouvelle()
@@ -33,16 +36,16 @@ def _diffuser(groupe: str, type_message: str, payload: dict):
         logger.warning("Pas de channel_layer configuré — diffusion ignorée")
         return
 
-    try:
-        async_to_sync(channel_layer.group_send)(
-            groupe,
-            {"type": type_message, **payload},
-        )
-    except Exception:
-        # Jamais casser une transaction à cause d'un problème de diffusion
-        logger.exception("Erreur de diffusion dans le groupe %s", groupe)
+    cibles = {groupe, "telemetrie"}   # groupe spécifique + global
 
-
+    for cible in cibles:
+        try:
+            async_to_sync(channel_layer.group_send)(
+                cible,
+                {"type": type_message, **payload},
+            )
+        except Exception:
+            logger.exception("Erreur de diffusion dans le groupe %s", cible)
 # ==================================================================
 # Mesure créée → diffuse
 # ==================================================================
