@@ -73,6 +73,10 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 # Application definition
 
 INSTALLED_APPS = [
+
+    #temps reel
+    'daphne',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -84,6 +88,9 @@ INSTALLED_APPS = [
     # Documentation API
     'drf_spectacular',
      'corsheaders', 
+     'django_filters',
+
+     'channels',
 
 #ajout des applications personnalisées
     'utilisateurs',
@@ -135,7 +142,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
-
+ASGI_APPLICATION = "core.asgi.application" 
 
 # Database
 # Base de données
@@ -387,3 +394,46 @@ CORS_EXPOSE_HEADERS = [
     "content-type",
     "x-csrftoken",
 ]
+
+
+# ------------------------------------------------------------------
+# Channels — WebSocket
+# ------------------------------------------------------------------
+# En production : Redis (multi-workers, persistance).
+# En dev : Redis aussi, pour cohérence avec la prod.
+
+# ------------------------------------------------------------------
+# Channels — WebSocket
+# ------------------------------------------------------------------
+REDIS_HOST = env("REDIS_HOST", "127.0.0.1")
+REDIS_PORT = int(env("REDIS_PORT", "6379"))
+REDIS_PASSWORD = env("REDIS_PASSWORD", "")
+REDIS_DB = int(env("REDIS_DB", "0"))
+
+_redis_url = (
+    f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    if REDIS_PASSWORD
+    else f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+)
+
+import sys as _sys
+if "test" in _sys.argv:
+    CHANNEL_LAYERS = {
+        "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [{
+                    "address": _redis_url,
+                    "socket_timeout": 10,
+                    "socket_connect_timeout": 10,
+                }],
+                # symmetric_encryption_keys retiré : causait des timeout
+                # avec python 3.14 + redis-py récent. Pas critique en dev
+                # (Redis tourne sur 127.0.0.1).
+            },
+        }
+    }
