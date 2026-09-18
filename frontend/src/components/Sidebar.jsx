@@ -3,10 +3,11 @@ import { NavLink } from 'react-router-dom';
 
 const Sidebar = () => {
   const liens = [
-    { path: '/tableau-de-bord', label: 'Tableau de bord' },
+    { path: '/', label: 'Tableau de bord' },        // ← corrigé (était /tableau-de-bord)
     { path: '/reservoirs', label: 'Réservoirs' },
     { path: '/capteurs', label: 'Capteurs' },
     { path: '/alertes', label: 'Alertes' },
+    { path: '/simulation', label: 'Simulation' },   // ← AJOUTÉ
   ];
 
   return (
@@ -22,6 +23,7 @@ const Sidebar = () => {
             <NavLink
               key={lien.path}
               to={lien.path}
+              end={lien.path === '/'}   // ← pour que "/" ne soit actif que sur la racine
               className={({ isActive }) =>
                 `px-4 py-3 rounded-lg font-medium transition-colors text-sm ${
                   isActive

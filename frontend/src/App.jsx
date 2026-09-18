@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Simulation from './pages/Simulation';
 
 // Pages
 import Connexion from './pages/Connexion';
@@ -66,6 +67,14 @@ function App() {
             element={
               <MainLayout>
                 <TableauDeBord />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/simulation"
+            element={
+              <MainLayout>
+                <Simulation />
               </MainLayout>
             }
           />
