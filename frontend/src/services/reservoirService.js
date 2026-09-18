@@ -1,49 +1,29 @@
-const API_URL = 'http://127.0.0.1:8000/api/reservoirs';
+import axios from 'axios';
 
-const getHeaders = () => {
-  const token = localStorage.getItem('access_token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
-  };
-};
+const api = axios.create({
+  baseURL: 'http://127.0.0.1:8000/api',
+});
 
-const handleResponse = async (response) => {
-  if (response.status === 401) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    window.location.href = '/connexion';
-    throw new Error('Session expirée, veuillez vous reconnecter.');
+// Intercepteur pour inclure automatiquement le token d'accès
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token'); // Adapter selon votre stockage (token, access_token, etc.)
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(JSON.stringify(errorData));
-  }
-  return response;
-};
+  return config;
+});
 
 export const getReservoirsAPI = async () => {
-  const response = await fetch(`${API_URL}/`, { headers: getHeaders() });
-  await handleResponse(response);
-  const data = await response.json();
-  return Array.isArray(data) ? data : data.results || [];
+  const response = await api.get('/reservoirs/');
+  return response.data;
 };
 
-export const creerReservoirAPI = async (payload) => {
-  const response = await fetch(`${API_URL}/`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(payload),
-  });
-  await handleResponse(response);
-  return await response.json();
+export const creerReservoirAPI = async (data) => {
+  const response = await api.post('/reservoirs/', data);
+  return response.data;
 };
 
 export const supprimerReservoirAPI = async (id) => {
-  const response = await fetch(`${API_URL}/${id}/`, {
-    method: 'DELETE',
-    headers: getHeaders(),
-  });
-  await handleResponse(response);
-  return true;
+  const response = await api.delete(`/reservoirs/${id}/`);
+  return response.data;
 };
