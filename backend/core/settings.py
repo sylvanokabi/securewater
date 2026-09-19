@@ -101,7 +101,9 @@ INSTALLED_APPS = [
     'capteurs',
     'alertes',
     'temps_reel',
-    'communication_mqtt'
+    'communication_mqtt',
+    "simulation", 
+
 ]
 
 MIDDLEWARE = [
