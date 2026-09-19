@@ -305,6 +305,7 @@ const Reservoirs = () => {
       const payload = {
         nom: form.nom,
         code: form.code,
+        code_mqtt: form.code,
         description: form.description,
         localisation: form.localisation,
         latitude: form.latitude ? parseFloat(form.latitude) : null,
