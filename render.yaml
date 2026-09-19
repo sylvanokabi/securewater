@@ -1,0 +1,51 @@
+# render.yaml
+services:
+  # Service pour le backend Django (ASGI pour les WebSockets)
+  - type: web
+    name: securewater-backend
+    env: python
+    region: frankfurt # Choisis la région la plus proche de toi
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py migrate
+      python manage.py collectstatic --no-input
+    startCommand: daphne -b 0.0.0.0 -p $PORT core.asgi:application
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: REDIS_URL
+        fromService:
+          name: securewater-redis
+          type: redis
+          property: connectionString
+      - key: MQTT_BROKER_HOST
+        value: "ton-broker-mqtt.exemple.com" # Remplace par l'adresse de ton broker
+      # ... Ajoute ici tes autres variables d'environnement (MQTT_USERNAME, etc.)
+
+  # Service pour le client MQTT (écoute en permanence)
+  - type: worker
+    name: securewater-mqtt-client
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py demarrer_mqtt
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: securewater-redis
+          type: redis
+          property: connectionString
+      # ... Les mêmes variables MQTT que le backend
+
+  # Service Redis managé
+  - type: redis
+    name: securewater-redis
+    plan: free
+    region: frankfurt
+    ipAllowList: [] # Accessible uniquement depuis ton application

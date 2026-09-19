@@ -2,10 +2,10 @@
 Point d'entrée CLI du simulateur.
 
 Exemples :
-    python -m simulateur.main
-    python -m simulateur.main --reservoir test --capteurs 2
-    python -m simulateur.main --scenario fuite --duree 60
-    python -m simulateur.main --dry-run    # vérifie la config sans publier
+    python -m simulateur.main --reservoir test
+    python -m simulateur.main --reservoir test --codes-niveau n1,n2 --codes-debit d1
+    python -m simulateur.main --reservoir test --scenario fuite --duree 60
+    python -m simulateur.main --reservoir test --dry-run
 """
 import argparse
 import logging
@@ -32,20 +32,23 @@ def parse_args(argv=None):
         description="Simulateur de capteurs IoT pour SecureWater",
     )
     parser.add_argument(
-        "--reservoir", "-r", default="test",
-        help="Code du réservoir cible (défaut: test)",
+        "--reservoir", "-r", required=True,
+        help="Code du réservoir cible (ex: test)",
     )
     parser.add_argument(
-        "--capteurs", "-c", type=int, default=1,
-        help="Nombre de capteurs de niveau à simuler (défaut: 1)",
+        "--codes-niveau",
+        default="",
+        help="Codes des capteurs de niveau, séparés par des virgules (ex: n1,n2)",
     )
     parser.add_argument(
-        "--avec-debit", action="store_true",
-        help="Ajoute un capteur de débit",
+        "--codes-debit",
+        default="",
+        help="Codes des capteurs de débit, séparés par des virgules (ex: d1)",
     )
     parser.add_argument(
         "--scenario", "-s", choices=list(scenarios.SCENARIOS_DISPONIBLES.keys()),
-        default="normal", help="Scénario d'évolution du niveau (défaut: normal)",
+        default="normal",
+        help="Scénario d'évolution du niveau (défaut: normal)",
     )
     parser.add_argument(
         "--intervalle", "-i", type=float, default=3.0,
@@ -88,7 +91,7 @@ def configurer_logs(verbose: int):
 # Boucle principale
 # ==================================================================
 class GestionnaireArret:
-    """Capture Ctrl+C pour arrêter proprement."""
+    """Capture Ctrl+C et SIGTERM pour arrêter proprement."""
 
     def __init__(self):
         self.arrete = False
@@ -100,13 +103,19 @@ class GestionnaireArret:
         self.arrete = True
 
 
+def _split_codes(valeur: str) -> list[str]:
+    """Découpe une chaîne 'a,b,c' en liste ['a', 'b', 'c'] (vide si vide)."""
+    if not valeur:
+        return []
+    return [c.strip() for c in valeur.split(",") if c.strip()]
+
+
 def creer_capteurs(args, config, client):
-    """Instancie les capteurs selon les arguments CLI."""
+    """Instancie les capteurs selon les codes fournis."""
     capteurs = []
 
-    # Capteurs de niveau
-    for i in range(args.capteurs):
-        code = f"niveau-{i+1:02d}"
+    # --- Capteurs de NIVEAU ---
+    for code in _split_codes(args.codes_niveau):
         c = CapteurNiveau(
             code=code,
             code_reservoir=args.reservoir,
@@ -117,10 +126,10 @@ def creer_capteurs(args, config, client):
         )
         capteurs.append(c)
 
-    # Capteur de débit
-    if args.avec_debit:
+    # --- Capteurs de DÉBIT ---
+    for code in _split_codes(args.codes_debit):
         c = CapteurDebit(
-            code="debit-01",
+            code=code,
             code_reservoir=args.reservoir,
             config=config,
             client=client,
@@ -132,6 +141,10 @@ def creer_capteurs(args, config, client):
 
 def boucle_principale(capteurs, config, args, arret: GestionnaireArret):
     """Boucle de publication jusqu'à arrêt ou fin de durée."""
+    if not capteurs:
+        logger.error("❌ Aucun capteur à simuler.")
+        return
+
     debut = time.time()
     dernier_heartbeat = 0.0
 
@@ -140,25 +153,24 @@ def boucle_principale(capteurs, config, args, arret: GestionnaireArret):
         c.initialiser()
         c.annoncer_online()
 
-    logger.info("🚀 Simulateur démarré (%d capteurs, intervalle %.1fs)",
-                len(capteurs), args.intervalle)
+    logger.info(
+        "🚀 Simulateur démarré (%d capteurs, intervalle %.1fs)",
+        len(capteurs), args.intervalle,
+    )
 
     while not arret.arrete:
         now = time.time()
 
-        # Fin de durée ?
         if args.duree is not None and (now - debut) >= args.duree:
             logger.info("⏱️  Durée maximale atteinte (%.0fs)", args.duree)
             break
 
-        # Mesure pour chaque capteur
         for c in capteurs:
             try:
                 c.publier_mesure()
             except Exception as e:
                 logger.exception("Erreur publication mesure %s : %s", c.code, e)
 
-        # Heartbeats périodiques
         if now - dernier_heartbeat >= config.intervalle_heartbeat:
             for c in capteurs:
                 try:
@@ -167,7 +179,6 @@ def boucle_principale(capteurs, config, args, arret: GestionnaireArret):
                     logger.exception("Erreur heartbeat %s : %s", c.code, e)
             dernier_heartbeat = now
 
-        # Attente
         time.sleep(args.intervalle)
 
 
@@ -178,15 +189,15 @@ def main(argv=None):
     args = parse_args(argv)
     configurer_logs(args.verbose)
 
-    # Charge la config
     config = charger_configuration()
     config.scenario = args.scenario
     config.intervalle_mesure = args.intervalle
 
-    logger.info("Configuration : broker %s:%s | scénario=%s",
-                config.host, config.port, args.scenario)
+    logger.info(
+        "Configuration : broker %s:%s | réservoir=%s | scénario=%s",
+        config.host, config.port, args.reservoir, args.scenario,
+    )
 
-    # Vérifie les certificats
     erreurs = config.verifier_certificats()
     if erreurs:
         logger.error("❌ Certificats manquants :")
@@ -194,12 +205,10 @@ def main(argv=None):
             logger.error("  - %s", e)
         return 2
 
-    # Mode dry-run : on s'arrête là
     if args.dry_run:
         logger.info("✅ Configuration valide (dry-run, aucune connexion)")
         return 0
 
-    # Connexion au broker
     client = ClientSimulateurMQTT(config, client_id_suffix=args.reservoir)
     try:
         client.connecter()
@@ -207,20 +216,16 @@ def main(argv=None):
         logger.exception("❌ Impossible de se connecter au broker : %s", e)
         return 3
 
-    # Instancie les capteurs
     capteurs = creer_capteurs(args, config, client)
 
-    # Gestion arrêt
     arret = GestionnaireArret()
 
-    # Boucle
     try:
         boucle_principale(capteurs, config, args, arret)
     except Exception as e:
         logger.exception("💥 Erreur dans la boucle principale : %s", e)
         return 4
     finally:
-        # Annonce "hors ligne" pour chaque capteur
         for c in capteurs:
             try:
                 c.annoncer_offline("arrêt simulateur")

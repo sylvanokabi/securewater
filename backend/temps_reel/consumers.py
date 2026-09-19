@@ -180,3 +180,96 @@ class ReservoirConsumer(AsyncJsonWebsocketConsumer):
             "etat_niveau": mesure.etat_niveau,
             "horodatage": mesure.horodatage.isoformat(),
         }
+
+
+
+# ==================================================================
+# Consumer TÉLÉMÉTRIE GLOBALE — /ws/telemetrie/
+# ==================================================================
+
+class TelemetrieConsumer(AsyncJsonWebsocketConsumer):
+    """
+    Consumer qui diffuse la télémétrie de TOUS les réservoirs.
+
+    Connexion :
+        ws://host/ws/telemetrie/?token=<JWT>
+
+    Il rejoint le groupe global "telemetrie" auquel tous les signaux
+    diffusent en parallèle des groupes par réservoir.
+
+    Utile pour un dashboard "vue globale" (frontend).
+    """
+
+    GROUPE = "telemetrie"
+
+    async def connect(self):
+        self.utilisateur = self.scope.get("user")
+
+        # Auth obligatoire
+        if not self.utilisateur or not self.utilisateur.is_authenticated:
+            logger.warning("WS refusé : anonyme sur %s", self.GROUPE)
+            await self.close(code=4401)
+            return
+
+        await self.channel_layer.group_add(self.GROUPE, self.channel_name)
+        await self.accept()
+
+        logger.info(
+            "WS télémetrie connecté : user=%s (channel=%s)",
+            self.utilisateur.username, self.channel_name,
+        )
+
+        await self.send_json({
+            "type": "bienvenue",
+            "scope": "telemetrie",
+            "message": "Connecté au flux temps réel global",
+        })
+
+    async def disconnect(self, code):
+        await self.channel_layer.group_discard(self.GROUPE, self.channel_name)
+        logger.info("WS télémetrie déconnecté (code=%s)", code)
+
+    async def receive_json(self, content, **kwargs):
+        action = content.get("action")
+        if action == "ping":
+            await self.send_json({"type": "pong"})
+            return
+        await self.send_json({
+            "type": "erreur",
+            "message": f"Action inconnue : {action}",
+        })
+
+    # Handlers de diffusion (mêmes noms que ReservoirConsumer)
+    async def mesure_nouvelle(self, event):
+        await self.send_json({
+            "type": "mesure",
+            "capteur": event["capteur"],
+            "capteur_nom": event.get("capteur_nom"),
+            "reservoir": event.get("reservoir"),
+            "valeur": event["valeur"],
+            "unite": event["unite"],
+            "volume_litres": event.get("volume_litres"),
+            "pourcentage_remplissage": event.get("pourcentage_remplissage"),
+            "etat_niveau": event.get("etat_niveau"),
+            "horodatage": event["horodatage"],
+        })
+
+    async def alerte_nouvelle(self, event):
+        await self.send_json({
+            "type": "alerte",
+            "alerte_id": event["alerte_id"],
+            "gravite": event["gravite"],
+            "type_alerte": event["type_alerte"],
+            "message": event["message"],
+            "capteur": event.get("capteur"),
+            "valeur_mesure": event.get("valeur_mesure"),
+            "date_declenchement": event["date_declenchement"],
+        })
+
+    async def capteur_etat(self, event):
+        await self.send_json({
+            "type": "capteur_etat",
+            "capteur": event["capteur"],
+            "en_ligne": event["en_ligne"],
+            "etat_connexion": event["etat_connexion"],
+        })
