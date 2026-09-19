@@ -76,6 +76,7 @@ INSTALLED_APPS = [
 
     #temps reel
     'daphne',
+    'channels',
 
     'django.contrib.admin',
     'django.contrib.auth',
@@ -90,7 +91,7 @@ INSTALLED_APPS = [
      'corsheaders', 
      'django_filters',
 
-     'channels',
+     
 
 #ajout des applications personnalisées
     'utilisateurs',
@@ -103,6 +104,7 @@ INSTALLED_APPS = [
     'temps_reel',
     'communication_mqtt',
     "simulation", 
+    "demonstration",
 
 ]
 
