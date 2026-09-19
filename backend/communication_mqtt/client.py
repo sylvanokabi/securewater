@@ -152,15 +152,27 @@ class ClientMQTT:
 
     def _on_message(self, client, userdata, msg):
         try:
+            # Incrémente les compteurs (best-effort)
+            try:
+                from demonstration.services import incrementer_compteur
+                incrementer_compteur("messages_recus")
+                if "/mesures" in msg.topic:
+                    incrementer_compteur("mesures_recues")
+                elif "/heartbeat" in msg.topic:
+                    incrementer_compteur("heartbeats_recus")
+            except Exception:
+                pass
+
             resultat = traiter_message(msg.topic, msg.payload)
             if resultat.ok:
-                logger.debug(
-                    "Message traité (%s) sur %s", resultat.canal, msg.topic
-                )
+                logger.debug("Message traité (%s) sur %s", resultat.canal, msg.topic)
             else:
-                logger.warning(
-                    "Message rejeté sur %s : %s", msg.topic, resultat.message
-                )
+                try:
+                    from demonstration.services import incrementer_compteur
+                    incrementer_compteur("messages_rejetes")
+                except Exception:
+                    pass
+                logger.warning("Message rejeté sur %s : %s", msg.topic, resultat.message)
         except Exception:
             logger.exception("Erreur non gérée lors du traitement de %s", msg.topic)
 

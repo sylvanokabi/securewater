@@ -27,4 +27,5 @@ urlpatterns = [
        path("api/", include("alertes.urls")),
        path("api/", include("temps_reel.urls")),
        path("api/", include("simulation.urls")),
+       path("api/", include("demonstration.urls")),
    ]
