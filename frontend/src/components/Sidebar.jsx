@@ -3,11 +3,15 @@ import { NavLink } from 'react-router-dom';
 
 const Sidebar = () => {
   const liens = [
-    { path: '/', label: 'Tableau de bord' },        // ← corrigé (était /tableau-de-bord)
+    { path: '/', label: 'Tableau de bord' },
     { path: '/reservoirs', label: 'Réservoirs' },
     { path: '/capteurs', label: 'Capteurs' },
     { path: '/alertes', label: 'Alertes' },
-    { path: '/simulation', label: 'Simulation' },   // ← AJOUTÉ
+    { path: '/simulation', label: 'Simulation' },
+    { section: 'Démonstration Sécurité' },
+    { path: '/securite/mqtt', label: 'MQTT' },
+    { path: '/securite/certificats', label: 'Certificats TLS' },
+    { path: '/securite/journal', label: 'Journal sécurité' },
   ];
 
   return (
@@ -19,22 +23,34 @@ const Sidebar = () => {
         </div>
 
         <nav className="flex flex-col gap-2">
-          {liens.map((lien) => (
-            <NavLink
-              key={lien.path}
-              to={lien.path}
-              end={lien.path === '/'}   // ← pour que "/" ne soit actif que sur la racine
-              className={({ isActive }) =>
-                `px-4 py-3 rounded-lg font-medium transition-colors text-sm ${
-                  isActive
-                    ? 'bg-sky-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`
-              }
-            >
-              {lien.label}
-            </NavLink>
-          ))}
+          {liens.map((lien, idx) => {
+            if (lien.section) {
+              return (
+                <div
+                  key={`section-${idx}`}
+                  className="mt-4 mb-1 px-4 text-xs font-semibold uppercase text-slate-500 tracking-wider"
+                >
+                  {lien.section}
+                </div>
+              );
+            }
+            return (
+              <NavLink
+                key={lien.path}
+                to={lien.path}
+                end={lien.path === '/'}
+                className={({ isActive }) =>
+                  `px-4 py-3 rounded-lg font-medium transition-colors text-sm ${
+                    isActive
+                      ? 'bg-sky-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`
+                }
+              >
+                {lien.label}
+              </NavLink>
+            );
+          })}
         </nav>
       </div>
 
