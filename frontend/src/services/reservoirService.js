@@ -1,12 +1,15 @@
 import axios from 'axios';
 
+// Récupération dynamique de la base de l'API avec fallback local
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api',
+  baseURL: `${BASE_URL}/api`,
 });
 
 // Intercepteur pour inclure automatiquement le token d'accès
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token'); // Adapter selon votre stockage (token, access_token, etc.)
+  const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
