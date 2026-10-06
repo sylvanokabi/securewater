@@ -334,12 +334,16 @@ AUTH_USER_MODEL = "utilisateurs.Utilisateur"
 
 # Sécurité supplémentaire en production HTTPS
 if not DEBUG:
+    # ⚠️ INDISPENSABLE sur Render : indique à Django de lire le header de reverse-proxy
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
     SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
+
 
 
 MQTT_CONFIG = {
