@@ -1,4 +1,6 @@
-const API_URL = 'http://127.0.0.1:8000/api/alertes';
+// Récupération dynamique de la base de l'API
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL = `${BASE_URL}/api/alertes`;
 
 const getHeaders = () => {
   const token = localStorage.getItem('access_token');
