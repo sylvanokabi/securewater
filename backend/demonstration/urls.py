@@ -6,6 +6,7 @@ from .views import (
     CertificatsView,
     TesterConnexionView,
     JournalView,
+    PublierMessageTestView,
 )
 
 app_name = "demonstration"
@@ -16,4 +17,5 @@ urlpatterns = [
     path("demonstration/certificats/", CertificatsView.as_view(), name="certificats"),
     path("demonstration/tester-connexion/", TesterConnexionView.as_view(), name="tester-connexion"),
     path("demonstration/journal/", JournalView.as_view(), name="journal"),
+    path("demonstration/mqtt/publier/", PublierMessageTestView.as_view(), name="publier-message"),
 ]

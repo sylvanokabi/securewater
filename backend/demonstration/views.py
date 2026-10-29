@@ -51,3 +51,20 @@ class JournalView(APIView):
     def get(self, request):
         limite = int(request.query_params.get("limite", 50))
         return Response(services.lister_evenements(limite))
+# Dans backend/demonstration/views.py
+
+class PublierMessageTestView(APIView):
+    permission_classes = [PeutVoirDemonstration]
+
+    def post(self, request):
+        valeur = request.data.get("valeur", 50.0)
+        type_capteur = request.data.get("type_capteur", "niveau")
+        
+        try:
+            resultat = services.publier_message_test(valeur, type_capteur)
+            if resultat["success"]:
+                return Response(resultat, status=status.HTTP_200_OK)
+            # Si ça échoue, on renvoie le message d'erreur exact
+            return Response(resultat, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)

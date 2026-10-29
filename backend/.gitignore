@@ -4,9 +4,5 @@ __pycache__/
 .env
 db.sqlite3
 
-certificats/*.key
-certificats/*.crt
-certificats/*.csr
-certificats/*.srl
-certificats/*.pem
+
 !certificats/README.md

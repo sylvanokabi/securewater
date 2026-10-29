@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import GraphiqueDebit from '../components/GraphiqueDebit';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getReservoirsAPI, creerReservoirAPI, supprimerReservoirAPI } from '../services/reservoirService';
-import { getCapteursAPI } from '../services/capteurService';
+import { getCapteursAPI, ajouterCapteurAPI, supprimerCapteurAPI } from '../services/capteurService';
+import { getAlertesAPI, resoudreAlerteAPI } from '../services/alerteService';
+import api from '../services/api';
 
 const Reservoirs = () => {
   // ================================================================
@@ -11,1056 +12,601 @@ const Reservoirs = () => {
   const [listeReservoirs, setListeReservoirs] = useState([]);
   const [reservoirSelectionneId, setReservoirSelectionneId] = useState(null);
   const [chargement, setChargement] = useState(true);
-  const [erreur, setErreur] = useState(null);
-  const [modalOuvert, setModalOuvert] = useState(false);
-  const [donneesDebit, setDonneesDebit] = useState([]);
-
   const [reservoir, setReservoir] = useState(null);
   const [capteurs, setCapteurs] = useState([]);
-  const [alertesDirect, setAlertesDirect] = useState([]);
-  const [etatsCapteurs, setEtatsCapteurs] = useState({});
+  const [alertes, setAlertes] = useState([]);
+  const [acquittementEnCours, setAcquittementEnCours] = useState({});
 
-  const initialFormState = {
-    nom: '',
-    code: '',
-    description: '',
-    localisation: '',
-    latitude: '',
-    longitude: '',
-    capacite_max_litres: '',
-    hauteur_max_cm: '',
-    seuil_critique_bas: '10',
-    seuil_alerte_bas: '25',
-    seuil_alerte_haut: '90',
-    seuil_critique_haut: '95',
-    statut: 'actif',
+  const [modalReservoir, setModalReservoir] = useState(false);
+  const [modalCapteur, setModalCapteur] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, type: '', id: null, nom: '' });
+
+  const initialReservoirForm = {
+    nom: '', description: '', localisation: '', latitude: '', longitude: '',
+    capacite_max_litres: '', hauteur_max_cm: '', seuil_critique_bas: '10',
+    seuil_alerte_bas: '25', seuil_alerte_haut: '90', seuil_critique_haut: '95', statut: 'actif',
   };
-  const [form, setForm] = useState(initialFormState);
+  const [formReservoir, setFormReservoir] = useState(initialReservoirForm);
+  const [formCapteur, setFormCapteur] = useState({ nom: '', type: 'niveau' });
 
-  // ================================================================
-  // MAP : code capteur → objet capteur (pour router les messages WS)
-  // ================================================================
-  const capteursParCode = useMemo(() => {
-    const map = {};
-    capteurs.forEach((c) => {
-      map[c.code] = c;
-    });
-    return map;
-  }, [capteurs]);
-
-  // ================================================================
-  // Refs — pour éviter les boucles infinies dans les useEffect
-  // ================================================================
-  const capteursParCodeRef = useRef({});
   const reservoirRef = useRef(null);
+  useEffect(() => { reservoirRef.current = reservoir; }, [reservoir]);
 
-  useEffect(() => {
-    capteursParCodeRef.current = capteursParCode;
-  }, [capteursParCode]);
-
-  useEffect(() => {
-    reservoirRef.current = reservoir;
-  }, [reservoir]);
-
-  // ================================================================
-  // Construction de l'URL WebSocket
-  // ⚠️ URL ABSOLUE vers Django, SANS token.
-  //    Le hook useWebSocket ajoute le token automatiquement.
-  // ================================================================
   const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000';
-
-  const wsPath = reservoir?.code
-    ? `${WS_BASE}/ws/reservoirs/${reservoir.code}/`
-    : null;
-
+  const wsPath = reservoir?.code ? `${WS_BASE}/ws/reservoirs/${reservoir.code}/` : null;
   const { data: messageWS, estConnecte } = useWebSocket(wsPath);
 
   // ================================================================
-  // 1. Initialisation du réservoir à partir des données REST
+  // Toast (AXE 4)
+  // ================================================================
+  const showToast = (message, type = 'success', details = null) => {
+    setToast({ message, type, details });
+    const duration = type === 'error' || type === 'warning' ? 6000 : 3500;
+    setTimeout(() => setToast(null), duration);
+  };
+
+  // ================================================================
+  // Helpers Alertes (AXE 1 & 2)
+  // ================================================================
+  const getAlerteStyle = (gravite) => {
+    switch (gravite?.toLowerCase()) {
+      case 'critique':
+        return { bg: '#fef2f2', border: '#ef4444', text: '#b91c1c', icon: '🚨', pulse: true };
+      case 'avertissement':
+        return { bg: '#fff7ed', border: '#f97316', text: '#c2410c', icon: '⚠️', pulse: false };
+      case 'info':
+      default:
+        return { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8', icon: 'ℹ️', pulse: false };
+    }
+  };
+
+  const getTypeLabel = (type) => {
+    const labels = {
+      niveau_critique_bas: 'Niveau critique bas',
+      niveau_bas: 'Niveau bas',
+      niveau_haut: 'Niveau haut',
+      debordement: 'Débordement',
+      capteur_hors_ligne: 'Capteur hors ligne',
+      capteur_silencieux: 'Capteur silencieux',
+      erreur_capteur: 'Erreur capteur',
+      manuelle: 'Alerte manuelle',
+    };
+    return labels[type] || type || 'Alerte';
+  };
+
+  // ================================================================
+  // Chargement
   // ================================================================
   const initialiserReservoir = useCallback((dataRes) => {
-    const niveauInitial =
-      dataRes.niveau_pourcentage ??
-      dataRes.niveau ??
-      (dataRes.volume_actuel_litres && dataRes.capacite_max_litres
-        ? (dataRes.volume_actuel_litres / dataRes.capacite_max_litres) * 100
-        : 0);
-
-    const debitInitial =
-      dataRes.debit_instantane ?? dataRes.debitActuel ?? dataRes.debit ?? 0;
-
+    const niveauInitial = dataRes.niveau_actuel_pct ?? 70;
     setReservoir({
       ...dataRes,
-      code: dataRes.code || dataRes.code_mqtt || '',
+      code: dataRes.code || '',
       niveauActuel: Math.min(Math.max(parseFloat(niveauInitial) || 0, 0), 100),
-      debitActuel: parseFloat(debitInitial) || 0,
+      debitActuel: 0,
     });
-    setDonneesDebit([]);
-    setAlertesDirect([]);
-    setEtatsCapteurs({});
   }, []);
 
-  // ================================================================
-  // 2. Charger la liste des réservoirs (REST)
-  // ================================================================
-  const chargerDonnees = useCallback(async () => {
+  const chargerReservoirs = useCallback(async () => {
     try {
       setChargement(true);
-      setErreur(null);
       const data = await getReservoirsAPI();
-      const liste = Array.isArray(data?.results)
-        ? data.results
-        : Array.isArray(data)
-        ? data
-        : [];
+      const liste = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
       setListeReservoirs(liste);
 
       if (liste.length > 0) {
-        const cible =
-          liste.find((r) => r.id === reservoirSelectionneId) || liste[0];
+        const cible = liste.find((r) => r.id === reservoirSelectionneId) || liste[0];
         setReservoirSelectionneId(cible.id);
         initialiserReservoir(cible);
       } else {
         setReservoir(null);
-        setReservoirSelectionneId(null);
       }
     } catch (err) {
-      console.error('Erreur chargement API:', err);
-      setErreur(err.message || 'Impossible de charger la liste des réservoirs.');
+      showToast("Erreur de chargement des réservoirs", "error");
     } finally {
       setChargement(false);
     }
   }, [reservoirSelectionneId, initialiserReservoir]);
 
+  useEffect(() => { chargerReservoirs(); }, []);
+
+  const chargerCapteurs = useCallback(async () => {
+    if (!reservoirSelectionneId) return;
+    try {
+      const data = await getCapteursAPI({ reservoir: reservoirSelectionneId });
+      setCapteurs(Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []);
+    } catch (err) { console.error(err); }
+  }, [reservoirSelectionneId]);
+
+  const chargerAlertes = useCallback(async () => {
+    if (!reservoirSelectionneId) return;
+    try {
+      // ✅ Le service accepte désormais les params
+      const data = await getAlertesAPI({ reservoir: reservoirSelectionneId, statut: 'active' });
+      const liste = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [];
+      // ✅ Filtrage client-side de sécurité (au cas où le backend ignore les params)
+      const filtrees = liste.filter(a => a.statut === 'active');
+      setAlertes(filtrees);
+    } catch (err) { console.error(err); }
+  }, [reservoirSelectionneId]);
+
   useEffect(() => {
-    chargerDonnees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    chargerCapteurs();
+    chargerAlertes();
+    const interval = setInterval(() => {
+      chargerCapteurs();
+      chargerAlertes();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [chargerCapteurs, chargerAlertes]);
+
+  // Mise à jour de secours pour la jauge
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!reservoirRef.current) return;
+      try {
+        const res = await api.get(`reservoirs/${reservoirRef.current.id}/`);
+        setReservoir((prev) => ({ 
+          ...prev, 
+          niveauActuel: Math.round(res.data.niveau_actuel_pct * 10) / 10 
+        }));
+      } catch (err) { /* silencieux */ }
+    }, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   // ================================================================
-  // 3. Charger les capteurs du réservoir sélectionné (REST)
-  //    + Rafraîchissement auto toutes les 5s
-  //    → utile quand on crée un capteur dans un autre onglet pendant
-  //      une simulation, il apparaît tout seul ici
+  // WebSocket
   // ================================================================
   useEffect(() => {
-    if (!reservoirSelectionneId) {
-      setCapteurs([]);
-      return;
-    }
-
-    let annule = false;
-
-    const chargerCapteurs = async () => {
-      try {
-        const data = await getCapteursAPI({ reservoir: reservoirSelectionneId });
-        if (annule) return;
-        const liste = Array.isArray(data?.results)
-          ? data.results
-          : Array.isArray(data)
-          ? data
-          : [];
-        setCapteurs(liste);
-      } catch (err) {
-        console.error('Erreur chargement capteurs:', err);
-        if (!annule) setCapteurs([]);
-      }
-    };
-
-    // Premier chargement immédiat
-    chargerCapteurs();
-
-    // Puis rafraîchit toutes les 5s
-    const intervalle = setInterval(chargerCapteurs, 5000);
-
-    return () => {
-      annule = true;
-      clearInterval(intervalle);
-    };
-  }, [reservoirSelectionneId]);
-
-  // ================================================================
-  // 4. Traitement des messages WebSocket
-  // ⚠️ UNE SEULE dépendance : messageWS.
-  // ================================================================
-  useEffect(() => {
-    if (!messageWS) return;
-    if (!reservoirRef.current) return;
-
+    if (!messageWS || !reservoirRef.current) return;
     const { type } = messageWS;
-    const capteursParCodeCourant = capteursParCodeRef.current;
 
-    // ----------------------------------------
-    // Bienvenue
-    // ----------------------------------------
-    if (type === 'bienvenue') {
-      console.log('[WS] Connecté au réservoir', messageWS.reservoir);
-      return;
-    }
-
-    // ----------------------------------------
-    // Nouvelle mesure
-    // ----------------------------------------
     if (type === 'mesure') {
-      const capteurCode = messageWS.capteur;
-      const capteurInfo = capteursParCodeCourant[capteurCode];
-
-      if (!capteurInfo) return;
-
-      // -------------------- Capteur de NIVEAU --------------------
-      if (capteurInfo.type === 'niveau') {
-        const nouveauNiveau = messageWS.pourcentage_remplissage;
-
-        if (nouveauNiveau !== undefined && nouveauNiveau !== null) {
-          setReservoir((prev) => ({
-            ...prev,
-            niveauActuel: Math.round(nouveauNiveau * 10) / 10,
-            etatNiveau: messageWS.etat_niveau,
-            volumeActuel: messageWS.volume_litres,
-          }));
-        }
+      setCapteurs(prev => prev.map(c => 
+        c.code === messageWS.capteur ? { ...c, derniere_valeur: messageWS.valeur, en_ligne: true } : c
+      ));
+      if (messageWS.unite === 'L/min' && messageWS.valeur != null) {
+        setReservoir((prev) => ({ ...prev, debitActuel: Math.round(messageWS.valeur * 100) / 100 }));
       }
-
-      // -------------------- Capteur de DÉBIT ---------------------
-      if (capteurInfo.type === 'debit') {
-        const nouveauDebit = messageWS.valeur;
-        if (nouveauDebit !== undefined && nouveauDebit !== null) {
-          setReservoir((prev) => ({
-            ...prev,
-            debitActuel: Math.round(nouveauDebit * 100) / 100,
-          }));
-
-          const timestamp = messageWS.horodatage
-            ? new Date(messageWS.horodatage).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              })
-            : new Date().toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              });
-
-          setDonneesDebit((prev) =>
-            [...prev, { temps: timestamp, debit: nouveauDebit }].slice(-15)
-          );
-        }
-      }
-
-      return;
     }
 
-    // ----------------------------------------
-    // Changement d'état d'un capteur
-    // ----------------------------------------
     if (type === 'capteur_etat') {
-      setEtatsCapteurs((prev) => ({
-        ...prev,
-        [messageWS.capteur]: {
-          en_ligne: messageWS.en_ligne,
-          etat_connexion: messageWS.etat_connexion,
-        },
-      }));
-      return;
+      setCapteurs(prev => prev.map(c => c.code === messageWS.capteur ? { ...c, en_ligne: messageWS.en_ligne } : c));
     }
 
-    // ----------------------------------------
-    // Nouvelle alerte
-    // ----------------------------------------
     if (type === 'alerte') {
-      setAlertesDirect((prev) =>
-        [
-          {
-            id: messageWS.alerte_id,
-            gravite: messageWS.gravite,
-            type: messageWS.type_alerte,
-            message: messageWS.message,
-            capteur: messageWS.capteur,
-            date: messageWS.date_declenchement,
-          },
-          ...prev,
-        ].slice(0, 10)
+      // ✅ Normalisation du payload avec fallback (gère les deux conventions de nommage)
+      const nouvelleAlerte = {
+        id: messageWS.alerte_id || messageWS.id || Date.now(),
+        message: messageWS.message || 'Alerte détectée',
+        gravite: messageWS.gravite || 'avertissement',
+        type: messageWS.type || messageWS.type_alerte || 'manuelle',
+        type_display: messageWS.type_display,
+        statut: 'active',
+        capteur: messageWS.capteur_id || messageWS.capteur,
+        capteur_code: messageWS.capteur_code || messageWS.capteur,
+        capteur_nom: messageWS.capteur_nom,
+        valeur_mesure: messageWS.valeur_mesure ?? messageWS.valeur_mesuree ?? null,
+        seuil_franchi: messageWS.seuil_franchi ?? messageWS.seuil ?? null,
+        date_declenchement: messageWS.date_declenchement || messageWS.created_at || new Date().toISOString(),
+      };
+      
+      setAlertes(prev => {
+        if (prev.find(a => a.id === nouvelleAlerte.id)) return prev;
+        return [nouvelleAlerte, ...prev];
+      });
+
+      const isCritique = nouvelleAlerte.gravite.toLowerCase() === 'critique';
+      
+      showToast(
+        nouvelleAlerte.message, 
+        isCritique ? 'error' : 'warning',
+        {
+          actionLabel: 'Voir les alertes',
+          onAction: () => {
+            setToast(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' }); 
+          }
+        }
       );
-      return;
     }
   }, [messageWS]);
 
   // ================================================================
-  // Handlers
+  // Acquittement (AXE 3)
   // ================================================================
-  const handleSelectReservoir = (e) => {
-    const id = parseInt(e.target.value, 10);
-    setReservoirSelectionneId(id);
-    const cible = listeReservoirs.find((r) => r.id === id);
-    if (cible) initialiserReservoir(cible);
+  const handleAcquitterAlerte = async (id) => {
+    if (acquittementEnCours[id]) return;
+    setAcquittementEnCours(prev => ({ ...prev, [id]: true }));
+    try {
+      await resoudreAlerteAPI(id);
+      setAlertes(prev => prev.filter(a => a.id !== id));
+      showToast("Alerte acquittée avec succès", "success");
+    } catch (err) {
+      showToast("Erreur lors de l'acquittement", "error");
+    } finally {
+      setAcquittementEnCours(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
-  const handleFormChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  // ================================================================
+  // Autres actions
+  // ================================================================
+  const handleScenarioChange = async (e) => {
+    const newScenario = e.target.value;
+    const oldScenario = reservoir.scenario_actuel;
+    setReservoir((prev) => ({ ...prev, scenario_actuel: newScenario }));
+    
+    try {
+      await api.patch(`reservoirs/${reservoir.id}/`, { scenario_actuel: newScenario });
+      showToast(`Scénario modifié : ${e.target.options[e.target.selectedIndex].text}`);
+    } catch (err) {
+      showToast("Erreur lors du changement de scénario", "error");
+      setReservoir((prev) => ({ ...prev, scenario_actuel: oldScenario }));
+    }
+  };
 
-  const handleCreateSubmit = async (e) => {
+  const handleCreateReservoir = async (e) => {
     e.preventDefault();
     try {
-      const payload = {
-        nom: form.nom,
-        code: form.code,
-        code_mqtt: form.code,
-        description: form.description,
-        localisation: form.localisation,
-        latitude: form.latitude ? parseFloat(form.latitude) : null,
-        longitude: form.longitude ? parseFloat(form.longitude) : null,
-        capacite_max_litres: parseFloat(form.capacite_max_litres),
-        hauteur_max_cm: parseFloat(form.hauteur_max_cm),
-        seuil_critique_bas: parseFloat(form.seuil_critique_bas),
-        seuil_alerte_bas: parseFloat(form.seuil_alerte_bas),
-        seuil_alerte_haut: parseFloat(form.seuil_alerte_haut),
-        seuil_critique_haut: parseFloat(form.seuil_critique_haut),
-        statut: form.statut,
-      };
-      await creerReservoirAPI(payload);
-      setForm(initialFormState);
-      setModalOuvert(false);
-      await chargerDonnees();
+      await creerReservoirAPI(formReservoir);
+      setFormReservoir(initialReservoirForm); setModalReservoir(false);
+      await chargerReservoirs();
+      showToast("Réservoir créé avec succès !");
     } catch (err) {
-      alert(`Erreur de création : ${err.message}`);
+      showToast("Erreur de création : " + err.message, "error");
     }
   };
 
-  const handleSupprimer = async (id) => {
-    if (window.confirm('Voulez-vous vraiment supprimer ce réservoir ?')) {
-      try {
-        await supprimerReservoirAPI(id);
-        await chargerDonnees();
-      } catch (err) {
-        alert(`Erreur lors de la suppression : ${err.message}`);
+  const handleCreateCapteur = async (e) => {
+    e.preventDefault();
+    try {
+      await ajouterCapteurAPI({ ...formCapteur, reservoir: reservoir.id });
+      setFormCapteur({ nom: '', type: 'niveau' }); setModalCapteur(false);
+      await chargerCapteurs();
+      showToast("Capteur ajouté avec succès !");
+    } catch (err) {
+      showToast("Erreur lors de l'ajout du capteur", "error");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      if (confirmDelete.type === 'reservoir') {
+        await supprimerReservoirAPI(confirmDelete.id);
+        await chargerReservoirs();
+      } else {
+        await supprimerCapteurAPI(confirmDelete.id);
+        await chargerCapteurs();
       }
+      showToast(`${confirmDelete.type === 'reservoir' ? 'Réservoir' : 'Capteur'} supprimé.`);
+    } catch (err) {
+      showToast("Erreur lors de la suppression", "error");
+    } finally {
+      setConfirmDelete({ isOpen: false, type: '', id: null, nom: '' });
     }
   };
 
-  // ================================================================
-  // Couleur de l'eau selon les seuils
-  // ================================================================
-  const obtenirCouleurSeuil = () => {
-    if (!reservoir) return '#0284c7';
-    const niv = reservoir.niveauActuel;
+  if (chargement) return <div style={{ padding: '3rem', textAlign: 'center' }}>Chargement...</div>;
 
-    const sCritBas = parseFloat(reservoir.seuil_critique_bas ?? 10);
-    const sCritHaut = parseFloat(reservoir.seuil_critique_haut ?? 95);
-    const sAltBas = parseFloat(reservoir.seuil_alerte_bas ?? 25);
-    const sAltHaut = parseFloat(reservoir.seuil_alerte_haut ?? 90);
-
-    if (niv <= sCritBas || niv >= sCritHaut) return '#ef4444';
-    if (niv <= sAltBas || niv >= sAltHaut) return '#f97316';
-    return '#0284c7';
-  };
-
-  // ================================================================
-  // Rendu
-  // ================================================================
-  if (chargement) {
-    return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-        <p style={{ fontWeight: '500' }}>Chargement des réservoirs en cours...</p>
-      </div>
-    );
-  }
-
-  if (erreur) {
-    return (
-      <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
-        <div
-          style={{
-            padding: '1rem',
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            color: '#b91c1c',
-            borderRadius: '0.5rem',
-          }}
-        >
-          {erreur}
-        </div>
-      </div>
-    );
-  }
-
-  const capMax = parseFloat(reservoir?.capacite_max_litres) || 10000;
-  const volumeLitresActuel = reservoir
-    ? ((capMax * (reservoir.niveauActuel || 0)) / 100).toFixed(0)
-    : 0;
-  const couleurEau = obtenirCouleurSeuil();
+  const couleurEau = reservoir?.niveauActuel <= 10 || reservoir?.niveauActuel >= 95 ? '#ef4444' : reservoir?.niveauActuel <= 25 || reservoir?.niveauActuel >= 90 ? '#f97316' : '#0284c7';
+  const capMax = parseFloat(reservoir?.capacite_max_litres) || 0;
+  const volumeLitresActuel = ((capMax * (reservoir?.niveauActuel || 0)) / 100).toFixed(0);
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
-      {/* En-tête */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1.5rem',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+    <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto', position: 'relative' }}>
+      
+      {/* Animations CSS */}
+      <style>{`
+        @keyframes pulse-red {
+          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .alerte-critique-pulse { animation: pulse-red 2s infinite; }
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
+
+      {/* TOAST (AXE 4) */}
+      {toast && (
+        <div style={{ 
+          position: 'fixed', top: '1.5rem', right: '1.5rem', zIndex: 100, padding: '1rem 1.5rem', borderRadius: '12px', color: '#fff', 
+          backgroundColor: toast.type === 'error' ? '#ef4444' : toast.type === 'warning' ? '#f97316' : '#10b981', 
+          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+          display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '350px', animation: 'slideIn 0.3s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+            {toast.type === 'error' ? '🚨 Alerte Critique' : toast.type === 'warning' ? '⚠️ Avertissement' : '✅ Succès'}
+          </div>
+          <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>{toast.message}</div>
+          
+          {toast.details?.actionLabel && (
+            <button 
+              onClick={toast.details.onAction}
+              style={{ marginTop: '0.5rem', padding: '0.4rem 0.8rem', backgroundColor: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', alignSelf: 'flex-start' }}
+            >
+              {toast.details.actionLabel}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1
-            style={{
-              color: '#0f172a',
-              margin: 0,
-              fontSize: '1.75rem',
-              fontWeight: 'bold',
-            }}
-          >
-            {reservoir ? reservoir.nom : 'Aucun réservoir enregistré'}
-          </h1>
-          <span
-            style={{
-              fontSize: '0.875rem',
-              color: '#64748b',
-              fontFamily: 'monospace',
-            }}
-          >
-            Code MQTT: {reservoir?.code || 'N/A'} | ID: {reservoir?.id || '-'}
-          </span>
+          <h1 style={{ color: '#0f172a', margin: 0, fontSize: '1.75rem', fontWeight: 'bold' }}>{reservoir ? reservoir.nom : 'Aucun réservoir'}</h1>
+          <span style={{ fontSize: '0.875rem', color: '#64748b' }}>ID: {reservoir?.id || '-'}</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {listeReservoirs.length > 0 && (
-            <select
-              value={reservoirSelectionneId || ''}
-              onChange={handleSelectReservoir}
-              style={{
-                padding: '0.5rem 1rem',
-                borderRadius: '0.5rem',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#fff',
-              }}
-            >
-              {listeReservoirs.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nom} ({r.code})
-                </option>
-              ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <select value={reservoirSelectionneId || ''} onChange={(e) => { const id = parseInt(e.target.value); setReservoirSelectionneId(id); initialiserReservoir(listeReservoirs.find(r => r.id === id)); }} style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #cbd5e1' }}>
+            {listeReservoirs.map((r) => <option key={r.id} value={r.id}>{r.nom}</option>)}
+          </select>
+
+          {reservoir && (
+            <select value={reservoir.scenario_actuel || 'normal'} onChange={handleScenarioChange} style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '2px solid #0284c7', fontWeight: 'bold' }}>
+              <option value="normal">Normal (Fluctuation)</option>
+              <option value="remplissage">Remplissage (30s)</option>
+              <option value="vidage">Vidage (30s)</option>
             </select>
           )}
 
-          <button
-            onClick={() => setModalOuvert(true)}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#0284c7',
-              color: '#fff',
-              borderRadius: '0.5rem',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}
-          >
-            + Nouveau
-          </button>
-
-          {/* Badge WebSocket */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor: '#f8fafc',
-              padding: '0.5rem 0.75rem',
-              borderRadius: '9999px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <span
-              style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                backgroundColor: estConnecte ? '#16a34a' : '#dc2626',
-                display: 'inline-block',
-              }}
-            />
-            <span
-              style={{
-                fontSize: '0.875rem',
-                color: '#475569',
-                fontWeight: '500',
-              }}
-            >
-              {estConnecte ? 'Télémétrie en temps réel' : 'Déconnecté'}
-            </span>
+          <button onClick={() => setModalReservoir(true)} style={{ padding: '0.5rem 1rem', backgroundColor: '#0284c7', color: '#fff', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: '600' }}>+ Réservoir</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '9999px', border: '1px solid #e2e8f0' }}>
+            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: estConnecte ? '#16a34a' : '#dc2626' }} />
+            <span style={{ fontSize: '0.875rem', color: '#475569' }}>{estConnecte ? 'En direct' : 'Déconnecté'}</span>
           </div>
         </div>
       </div>
 
-      {/* Alertes en direct */}
-      {alertesDirect.length > 0 && (
-        <div
-          style={{
-            marginBottom: '1.5rem',
-            padding: '1rem',
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '0.5rem',
-          }}
-        >
-          <strong style={{ color: '#b91c1c' }}>🚨 Alertes en cours</strong>
-          <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.5rem' }}>
-            {alertesDirect.slice(0, 3).map((a) => (
-              <li key={a.id} style={{ color: '#b91c1c', fontSize: '0.9rem' }}>
-                [{a.gravite}] {a.message}
-              </li>
-            ))}
-          </ul>
+      {/* ================================================================ */}
+      {/* BANDEAU DES ALERTES (AXES 1, 2, 3)                               */}
+      {/* ================================================================ */}
+      {alertes.length > 0 && (
+        <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.1rem', fontWeight: 'bold' }}>
+            Alertes actives ({alertes.length})
+          </h3>
+          
+          {alertes.map((a) => {
+            const style = getAlerteStyle(a.gravite);
+            
+            // ✅ Résolution du nom du capteur (fallback : lookup dans capteurs chargés)
+            const nomCapteur = a.capteur_nom 
+              || capteurs.find(c => c.code === a.capteur_code || c.id === a.capteur)?.nom 
+              || a.capteur_code 
+              || 'Capteur';
+            
+            // ✅ Formatage de la date (fallback sur date_declenchement)
+            let heure = '';
+            try {
+              if (a.date_declenchement) {
+                heure = new Date(a.date_declenchement).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+              }
+            } catch (e) {}
+            
+            const enCours = acquittementEnCours[a.id];
+
+            return (
+              <div 
+                key={a.id} 
+                className={style.pulse ? 'alerte-critique-pulse' : ''}
+                style={{
+                  backgroundColor: style.bg,
+                  borderLeft: `5px solid ${style.border}`,
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  opacity: enCours ? 0.6 : 1,
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{style.icon}</span>
+                  <div style={{ minWidth: 0 }}>
+                    {/* AXE 2 : En-tête contextuel */}
+                    <div style={{ color: style.text, fontWeight: '600', fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                      {getTypeLabel(a.type || a.type_alerte)} — <span style={{ textDecoration: 'underline' }}>{nomCapteur}</span>
+                    </div>
+                    {/* AXE 2 : Message + valeurs */}
+                    <div style={{ color: '#475569', fontSize: '0.875rem' }}>
+                      {a.message}
+                      {a.valeur_mesure != null && a.seuil_franchi != null && (
+                        <span style={{ fontWeight: 'bold', color: style.text }}>
+                          {" "}(Mesure: {Number(a.valeur_mesure).toFixed(1)} | Seuil: {Number(a.seuil_franchi).toFixed(1)})
+                        </span>
+                      )}
+                    </div>
+                    {/* AXE 2 : Timestamp */}
+                    {heure && (
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                        ⏱ Déclenchée à {heure}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* AXE 3 : Bouton Acquitter */}
+                <button 
+                  onClick={() => handleAcquitterAlerte(a.id)}
+                  disabled={enCours}
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    backgroundColor: '#fff',
+                    color: style.text,
+                    border: `1px solid ${style.border}`,
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    cursor: enCours ? 'wait' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    marginLeft: '0.75rem',
+                    flexShrink: 0,
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseOver={(e) => { if (!enCours) e.currentTarget.style.backgroundColor = style.bg; }}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                >
+                  {enCours ? '⏳...' : '✔️ Acquitter'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {reservoir ? (
         <>
           <div style={styles.container}>
-            {/* CUVE */}
             <div style={styles.cardCuve}>
-              <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>
-                Niveau d'Eau (Temps Réel)
-              </h3>
               <div style={styles.cuveOuter}>
-                <div
-                  style={{
-                    ...styles.eauFluid,
-                    height: `${reservoir.niveauActuel || 0}%`,
-                    backgroundColor: couleurEau,
-                  }}
-                >
-                  <div style={styles.vague} />
-                </div>
-                <span style={styles.pourcentageTexte}>
-                  {reservoir.niveauActuel}%
-                </span>
+                <div style={{ ...styles.eauFluid, height: `${reservoir.niveauActuel || 0}%`, backgroundColor: couleurEau }}><div style={styles.vague} /></div>
+                <span style={styles.pourcentageTexte}>{reservoir.niveauActuel}%</span>
               </div>
-
-              <p
-                style={{
-                  marginTop: '1.25rem',
-                  fontWeight: 'bold',
-                  color: '#334155',
-                  fontSize: '1.1rem',
-                }}
-              >
-                {Number(volumeLitresActuel).toLocaleString()} /{' '}
-                {capMax.toLocaleString()} L
-              </p>
-
-              {reservoir.etatNiveau && (
-                <span
-                  style={{
-                    display: 'inline-block',
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '9999px',
-                    backgroundColor:
-                      reservoir.etatNiveau === 'normal'
-                        ? '#dcfce7'
-                        : reservoir.etatNiveau === 'critique' ||
-                          reservoir.etatNiveau === 'debordement'
-                        ? '#fee2e2'
-                        : '#fed7aa',
-                    color:
-                      reservoir.etatNiveau === 'normal'
-                        ? '#166534'
-                        : reservoir.etatNiveau === 'critique' ||
-                          reservoir.etatNiveau === 'debordement'
-                        ? '#991b1b'
-                        : '#9a3412',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                  }}
-                >
-                  {reservoir.etatNiveau}
-                </span>
-              )}
+              <p style={{ marginTop: '1.25rem', fontWeight: 'bold', color: '#334155', fontSize: '1.1rem' }}>{Number(volumeLitresActuel).toLocaleString()} / {capMax.toLocaleString()} L</p>
             </div>
 
-            {/* DÉTAILS */}
             <div style={styles.cardInfos}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '1rem',
-                }}
-              >
-                <h3 style={{ margin: 0, color: '#1e293b' }}>
-                  Détails & Seuils de Tolérance
-                </h3>
-                <button
-                  onClick={() => handleSupprimer(reservoir.id)}
-                  style={{
-                    color: '#ef4444',
-                    border: 'none',
-                    background: 'none',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  Supprimer
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, color: '#1e293b' }}>Détails du Réservoir</h3>
+                <button onClick={() => setConfirmDelete({ isOpen: true, type: 'reservoir', id: reservoir.id, nom: reservoir.nom })} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Supprimer</button>
               </div>
-
               <ul style={styles.listeSpec}>
-                <li>
-                  <strong>Débit instantané :</strong>{' '}
-                  <span style={{ color: '#0284c7', fontWeight: 'bold' }}>
-                    {reservoir.debitActuel} L/min
-                  </span>
-                </li>
-                <li>
-                  <strong>Localisation :</strong>{' '}
-                  {reservoir.localisation || 'N/A'}
-                </li>
-                <li>
-                  <strong>Description :</strong> {reservoir.description || 'N/A'}
-                </li>
-                <li>
-                  <strong>Coordonnées GPS :</strong>{' '}
-                  {reservoir.latitude || '-'}, {reservoir.longitude || '-'}
-                </li>
-                <li>
-                  <strong>Hauteur Maximale :</strong> {reservoir.hauteur_max_cm}{' '}
-                  cm
-                </li>
-                <li>
-                  <strong>Seuils d'Alerte (Bas / Haut) :</strong>{' '}
-                  {reservoir.seuil_alerte_bas}% / {reservoir.seuil_alerte_haut}%
-                </li>
-                <li>
-                  <strong>Seuils Critiques (Bas / Haut) :</strong>{' '}
-                  {reservoir.seuil_critique_bas}% /{' '}
-                  {reservoir.seuil_critique_haut}%
-                </li>
-                <li>
-                  <strong>Statut du réservoir :</strong>{' '}
-                  <span
-                    style={{
-                      color:
-                        reservoir.statut === 'actif' ? '#16a34a' : '#d97706',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {reservoir.statut}
-                  </span>
-                </li>
+                <li><strong>Débit :</strong> {reservoir.debitActuel} L/min</li>
+                <li><strong>Localisation :</strong> {reservoir.localisation || 'N/A'}</li>
+                <li><strong>Capacité :</strong> {reservoir.capacite_max_litres} L</li>
+                <li><strong>Hauteur :</strong> {reservoir.hauteur_max_cm} cm</li>
               </ul>
-
-              {/* Liste des capteurs en direct */}
-              <div
-                style={{
-                  marginTop: '1rem',
-                  borderTop: '1px solid #e2e8f0',
-                  paddingTop: '1rem',
-                }}
-              >
-                <strong style={{ color: '#1e293b', fontSize: '0.9rem' }}>
-                  Capteurs ({capteurs.length})
-                </strong>
-                <ul
-                  style={{
-                    listStyle: 'none',
-                    padding: 0,
-                    margin: '0.5rem 0 0 0',
-                  }}
-                >
-                  {capteurs.map((c) => {
-                    const etat = etatsCapteurs[c.code];
-                    const enLigne = etat ? etat.en_ligne : c.en_ligne;
-                    return (
-                      <li
-                        key={c.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.25rem 0',
-                          fontSize: '0.85rem',
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: enLigne ? '#16a34a' : '#dc2626',
-                          }}
-                        />
-                        <span style={{ fontFamily: 'monospace' }}>
-                          {c.code}
-                        </span>
-                        <span style={{ color: '#94a3b8' }}>({c.type})</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
             </div>
           </div>
 
-          {/* GRAPHIQUE DÉBIT */}
-          <div
-            style={{
-              marginTop: '2rem',
-              backgroundColor: '#ffffff',
-              padding: '1.5rem',
-              borderRadius: '12px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>
-              Flux de Débit en Direct (L/min)
-            </h3>
-            <GraphiqueDebit donnees={donneesDebit} />
+          <div style={{ marginTop: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.25rem' }}>Capteurs Connectés ({capteurs.length})</h3>
+              <button onClick={() => setModalCapteur(true)} style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: '#fff', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: '600' }}>+ Ajouter un Capteur</button>
+            </div>
+            
+            {capteurs.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1', color: '#64748b' }}>Aucun capteur sur ce réservoir.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
+                {capteurs.map(c => (
+                  <div key={c.id} style={{ backgroundColor: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold', color: '#0f172a' }}>{c.nom}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'capitalize' }}>{c.type}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: c.en_ligne ? '#dcfce7' : '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '99px' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: c.en_ligne ? '#16a34a' : '#dc2626' }}></span>
+                        <span style={{ fontSize: '0.6rem', fontWeight: 'bold', color: c.en_ligne ? '#166534' : '#991b1b' }}>{c.en_ligne ? 'EN LIGNE' : 'HORS LIGNE'}</span>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '0.5rem', fontSize: '1.25rem', fontWeight: 'bold', color: '#0284c7' }}>
+                      {c.derniere_valeur !== undefined && c.derniere_valeur !== null ? `${c.derniere_valeur.toFixed(1)} ${c.unite}` : '—'}
+                    </div>
+                    <button onClick={() => setConfirmDelete({ isOpen: true, type: 'capteur', id: c.id, nom: c.nom })} style={{ position: 'absolute', bottom: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1' }}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       ) : (
-        <div
-          style={{
-            padding: '3rem',
-            textAlign: 'center',
-            backgroundColor: '#fff',
-            borderRadius: '12px',
-            border: '1px solid #e2e8f0',
-          }}
-        >
-          <p style={{ color: '#64748b' }}>
-            Aucun réservoir trouvé. Cliquez sur <strong>+ Nouveau</strong> pour en
-            créer un.
-          </p>
-        </div>
+        <div style={{ padding: '3rem', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>Aucun réservoir trouvé.</div>
       )}
 
-      {/* MODAL CRÉATION */}
-      {modalOuvert && (
+      {/* MODAL : CRÉATION RÉSERVOIR */}
+      {modalReservoir && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h2 style={{ marginTop: 0, color: '#0f172a' }}>
-              Ajouter un Réservoir
-            </h2>
-            <form
-              onSubmit={handleCreateSubmit}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '1rem',
-              }}
-            >
-              <div>
-                <label style={styles.label}>Nom (Unique) *</label>
-                <input
-                  style={styles.input}
-                  type="text"
-                  name="nom"
-                  value={form.nom}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>Code MQTT (Unique) *</label>
-                <input
-                  style={styles.input}
-                  type="text"
-                  name="code"
-                  value={form.code}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={styles.label}>Description *</label>
-                <input
-                  style={styles.input}
-                  type="text"
-                  name="description"
-                  value={form.description}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={styles.label}>Localisation *</label>
-                <input
-                  style={styles.input}
-                  type="text"
-                  name="localisation"
-                  value={form.localisation}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Latitude</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="any"
-                  name="latitude"
-                  value={form.latitude}
-                  onChange={handleFormChange}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>Longitude</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="any"
-                  name="longitude"
-                  value={form.longitude}
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Capacité Max (L) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="capacite_max_litres"
-                  value={form.capacite_max_litres}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>Hauteur Max (cm) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="hauteur_max_cm"
-                  value={form.hauteur_max_cm}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Seuil Critique Bas (%) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="seuil_critique_bas"
-                  value={form.seuil_critique_bas}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>Seuil Alerte Bas (%) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="seuil_alerte_bas"
-                  value={form.seuil_alerte_bas}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Seuil Alerte Haut (%) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="seuil_alerte_haut"
-                  value={form.seuil_alerte_haut}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>Seuil Critique Haut (%) *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  name="seuil_critique_haut"
-                  value={form.seuil_critique_haut}
-                  required
-                  onChange={handleFormChange}
-                />
-              </div>
-
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={styles.label}>Statut *</label>
-                <select
-                  style={styles.input}
-                  name="statut"
-                  onChange={handleFormChange}
-                  value={form.statut}
-                >
-                  <option value="actif">Actif</option>
-                  <option value="maintenance">Maintenance</option>
-                  <option value="inactif">Inactif</option>
-                </select>
-              </div>
-
-              <div
-                style={{
-                  gridColumn: 'span 2',
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '1rem',
-                  marginTop: '1rem',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setModalOuvert(false)}
-                  style={styles.btnSecondary}
-                >
-                  Annuler
-                </button>
-                <button type="submit" style={styles.btnPrimary}>
-                  Enregistrer
-                </button>
+            <h2 style={{ marginTop: 0, color: '#0f172a' }}>Ajouter un Réservoir</h2>
+            <form onSubmit={handleCreateReservoir} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div style={{ gridColumn: 'span 2' }}><label style={styles.label}>Nom (Unique) *</label><input style={styles.input} type="text" name="nom" value={formReservoir.nom} required onChange={e => setFormReservoir({...formReservoir, nom: e.target.value})} /></div>
+              <div style={{ gridColumn: 'span 2' }}><label style={styles.label}>Description</label><input style={styles.input} type="text" name="description" value={formReservoir.description} onChange={e => setFormReservoir({...formReservoir, description: e.target.value})} /></div>
+              <div style={{ gridColumn: 'span 2' }}><label style={styles.label}>Localisation</label><input style={styles.input} type="text" name="localisation" value={formReservoir.localisation} onChange={e => setFormReservoir({...formReservoir, localisation: e.target.value})} /></div>
+              <div><label style={styles.label}>Latitude</label><input style={styles.input} type="number" step="any" value={formReservoir.latitude} onChange={e => setFormReservoir({...formReservoir, latitude: e.target.value})} /></div>
+              <div><label style={styles.label}>Longitude</label><input style={styles.input} type="number" step="any" value={formReservoir.longitude} onChange={e => setFormReservoir({...formReservoir, longitude: e.target.value})} /></div>
+              <div><label style={styles.label}>Capacité Max (L) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.capacite_max_litres} required onChange={e => setFormReservoir({...formReservoir, capacite_max_litres: e.target.value})} /></div>
+              <div><label style={styles.label}>Hauteur Max (cm) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.hauteur_max_cm} required onChange={e => setFormReservoir({...formReservoir, hauteur_max_cm: e.target.value})} /></div>
+              <div><label style={styles.label}>Seuil Critique Bas (%) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.seuil_critique_bas} required onChange={e => setFormReservoir({...formReservoir, seuil_critique_bas: e.target.value})} /></div>
+              <div><label style={styles.label}>Seuil Alerte Bas (%) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.seuil_alerte_bas} required onChange={e => setFormReservoir({...formReservoir, seuil_alerte_bas: e.target.value})} /></div>
+              <div><label style={styles.label}>Seuil Alerte Haut (%) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.seuil_alerte_haut} required onChange={e => setFormReservoir({...formReservoir, seuil_alerte_haut: e.target.value})} /></div>
+              <div><label style={styles.label}>Seuil Critique Haut (%) *</label><input style={styles.input} type="number" step="0.1" value={formReservoir.seuil_critique_haut} required onChange={e => setFormReservoir({...formReservoir, seuil_critique_haut: e.target.value})} /></div>
+              <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                <button type="button" onClick={() => setModalReservoir(false)} style={styles.btnSecondary}>Annuler</button>
+                <button type="submit" style={styles.btnPrimary}>Enregistrer</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes onduler {
-          0% { transform: translateX(0) scaleY(1); }
-          50% { transform: translateX(-25%) scaleY(1.1); }
-          100% { transform: translateX(-50%) scaleY(1); }
-        }
-      `}</style>
+      {/* MODAL : AJOUT CAPTEUR */}
+      {modalCapteur && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '400px' }}>
+            <h2 style={{ marginTop: 0, color: '#0f172a' }}>Ajouter un Capteur</h2>
+            <form onSubmit={handleCreateCapteur} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div><label style={styles.label}>Nom du capteur *</label><input style={styles.input} type="text" value={formCapteur.nom} required onChange={e => setFormCapteur({...formCapteur, nom: e.target.value})} placeholder="Ex: Sonde A" /></div>
+              <div><label style={styles.label}>Type *</label>
+                <select style={styles.input} value={formCapteur.type} onChange={e => setFormCapteur({...formCapteur, type: e.target.value})}>
+                  <option value="niveau">Niveau (cm)</option>
+                  <option value="debit">Débit (L/min)</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                <button type="button" onClick={() => setModalCapteur(false)} style={styles.btnSecondary}>Annuler</button>
+                <button type="submit" style={styles.btnPrimary}>Ajouter</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL : CONFIRMATION DE SUPPRESSION */}
+      {confirmDelete.isOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '400px', textAlign: 'center' }}>
+            <h2 style={{ marginTop: 0, color: '#ef4444' }}>⚠️ Confirmation</h2>
+            <p style={{ color: '#334155', marginBottom: '1.5rem' }}>Supprimer le {confirmDelete.type} <strong>"{confirmDelete.nom}"</strong> ?</p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+              <button type="button" onClick={() => setConfirmDelete({ isOpen: false, type: '', id: null, nom: '' })} style={styles.btnSecondary}>Annuler</button>
+              <button type="button" onClick={handleConfirmDelete} style={{ ...styles.btnPrimary, backgroundColor: '#ef4444' }}>Confirmer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const styles = {
-  container: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-    gap: '1.5rem',
-  },
-  cardCuve: {
-    background: '#fff',
-    padding: '1.5rem',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-    textAlign: 'center',
-  },
-  cardInfos: {
-    background: '#fff',
-    padding: '1.5rem',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-  },
-  cuveOuter: {
-    position: 'relative',
-    width: '150px',
-    height: '220px',
-    border: '4px solid #334155',
-    borderRadius: '0 0 16px 16px',
-    margin: '1rem auto 0 auto',
-    overflow: 'hidden',
-    backgroundColor: '#f1f5f9',
-  },
-  eauFluid: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    transition: 'height 0.8s ease-in-out, background-color 0.5s ease',
-  },
-  vague: {
-    position: 'absolute',
-    top: '-10px',
-    left: 0,
-    width: '200%',
-    height: '20px',
-    background: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: '40%',
-    animation: 'onduler 4s infinite linear',
-  },
-  pourcentageTexte: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    fontWeight: 'bold',
-    fontSize: '1.5rem',
-    color: '#0f172a',
-    zIndex: 2,
-    textShadow: '0px 0px 4px rgba(255,255,255,0.9)',
-  },
-  listeSpec: {
-    listStyle: 'none',
-    padding: 0,
-    margin: 0,
-    lineHeight: '2.1rem',
-    color: '#475569',
-    fontSize: '0.9rem',
-  },
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-    padding: '1rem',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    padding: '1.5rem',
-    borderRadius: '12px',
-    maxWidth: '650px',
-    width: '100%',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-  },
-  label: {
-    display: 'block',
-    fontSize: '0.75rem',
-    fontWeight: '600',
-    color: '#334155',
-    marginBottom: '0.25rem',
-  },
-  input: {
-    width: '100%',
-    padding: '0.5rem',
-    borderRadius: '0.375rem',
-    border: '1px solid #cbd5e1',
-    fontSize: '0.875rem',
-  },
-  btnPrimary: {
-    padding: '0.5rem 1rem',
-    backgroundColor: '#0284c7',
-    color: '#fff',
-    borderRadius: '0.5rem',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  btnSecondary: {
-    padding: '0.5rem 1rem',
-    backgroundColor: '#f1f5f9',
-    color: '#334155',
-    borderRadius: '0.5rem',
-    border: '1px solid #cbd5e1',
-    cursor: 'pointer',
-  },
+  container: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' },
+  cardCuve: { background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' },
+  cardInfos: { background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' },
+  cuveOuter: { position: 'relative', width: '150px', height: '220px', border: '4px solid #334155', borderRadius: '0 0 16px 16px', margin: '1rem auto 0 auto', overflow: 'hidden', backgroundColor: '#f1f5f9' },
+  eauFluid: { position: 'absolute', bottom: 0, left: 0, right: 0, transition: 'height 0.8s ease-in-out, background-color 0.5s ease' },
+  vague: { position: 'absolute', top: '-10px', left: 0, width: '200%', height: '20px', background: 'rgba(255, 255, 255, 0.3)', borderRadius: '40%', animation: 'onduler 4s infinite linear' },
+  pourcentageTexte: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontWeight: 'bold', fontSize: '1.5rem', color: '#0f172a', zIndex: 2, textShadow: '0px 0px 4px rgba(255,255,255,0.9)' },
+  listeSpec: { listStyle: 'none', padding: 0, margin: 0, lineHeight: '2rem', color: '#475569', fontSize: '0.9rem' },
+  modalOverlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' },
+  modalContent: { backgroundColor: '#fff', padding: '1.5rem', borderRadius: '12px', maxWidth: '650px', width: '100%', maxHeight: '90vh', overflowY: 'auto' },
+  label: { display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#334155', marginBottom: '0.25rem' },
+  input: { width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #cbd5e1', fontSize: '0.875rem' },
+  btnPrimary: { padding: '0.5rem 1rem', backgroundColor: '#0284c7', color: '#fff', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: '600' },
+  btnSecondary: { padding: '0.5rem 1rem', backgroundColor: '#f1f5f9', color: '#334155', borderRadius: '0.5rem', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '600' },
 };
 
 export default Reservoirs;
