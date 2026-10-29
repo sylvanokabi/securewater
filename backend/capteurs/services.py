@@ -1,11 +1,5 @@
 """
 Couche service pour l'application capteurs.
-
-Contient :
-  - CRUD capteur avec validations métier
-  - gestion du cycle de vie IoT (auth, connexion, heartbeat, déconnexion)
-  - enregistrement de mesure (point d'entrée MQTT et HTTP)
-  - helpers de lecture (dernière mesure, état de connexion)
 """
 from django.db import transaction
 from django.db.models import F
@@ -19,7 +13,6 @@ from reservoirs.services import (
 )
 
 from .models import Capteur, Mesure
-
 
 # ==================================================================
 # Validations
@@ -119,10 +112,6 @@ def supprimer_capteur(capteur):
 # ==================================================================
 @transaction.atomic
 def marquer_authentification(capteur, *, adresse_ip=None, certificat_fingerprint=None):
-    """
-    Appelée quand le broker MQTT confirme une authentification TLS réussie.
-    Ne marque PAS le capteur en ligne à elle seule : voir `marquer_connexion`.
-    """
     capteur.derniere_authentification = timezone.now()
     if adresse_ip:
         capteur.adresse_ip = adresse_ip
@@ -139,10 +128,6 @@ def marquer_authentification(capteur, *, adresse_ip=None, certificat_fingerprint
 
 @transaction.atomic
 def marquer_connexion(capteur, *, adresse_ip=None, firmware_version=None):
-    """
-    Appelée quand une connexion MQTT est établie (CONNACK reçu).
-    Passe le capteur en ligne.
-    """
     capteur.derniere_connexion = timezone.now()
     capteur.en_ligne = True
     capteur.etat_connexion = Capteur.EtatConnexion.EN_LIGNE
@@ -169,7 +154,6 @@ def marquer_connexion(capteur, *, adresse_ip=None, firmware_version=None):
 
 @transaction.atomic
 def marquer_deconnexion(capteur, *, raison=""):
-    """Appelée quand le broker détecte une déconnexion (LWT ou DISCONNECT)."""
     capteur.en_ligne = False
     capteur.etat_connexion = Capteur.EtatConnexion.HORS_LIGNE
     if raison:
@@ -185,7 +169,6 @@ def marquer_deconnexion(capteur, *, raison=""):
 
 @transaction.atomic
 def marquer_erreur(capteur, *, message: str):
-    """Enregistre une erreur remontée par le client MQTT."""
     capteur.en_ligne = False
     capteur.etat_connexion = Capteur.EtatConnexion.EN_ERREUR
     capteur.derniere_erreur = message
@@ -200,10 +183,6 @@ def marquer_erreur(capteur, *, message: str):
 
 @transaction.atomic
 def traiter_heartbeat(capteur, *, adresse_ip=None):
-    """
-    Enregistre un heartbeat (le capteur est vivant sans nouvelle mesure).
-    Met à jour `derniere_connexion` et repasse l'état en ligne.
-    """
     capteur.derniere_connexion = timezone.now()
     capteur.en_ligne = True
     capteur.etat_connexion = Capteur.EtatConnexion.EN_LIGNE
@@ -223,18 +202,11 @@ def traiter_heartbeat(capteur, *, adresse_ip=None):
 
 
 def rafraichir_etats_connexion():
-    """
-    Parcourt les capteurs et met à jour `etat_connexion` selon les délais.
-    Utile pour un cron / management command / Celery beat.
-
-    Retourne le nombre de capteurs modifiés.
-    """
     maintenant = timezone.now()
     seuil = maintenant - timezone.timedelta(
         seconds=Capteur.DELAI_HORS_LIGNE_SECONDES
     )
 
-    # Capteurs en ligne mais silencieux depuis trop longtemps
     silencieux = Capteur.objects.filter(
         en_ligne=True,
     ).filter(
@@ -256,14 +228,6 @@ def rafraichir_etats_connexion():
 # ==================================================================
 @transaction.atomic
 def enregistrer_mesure(*, capteur, valeur: float, horodatage=None, payload_brut=None):
-    """
-    Enregistre une mesure et met à jour l'état du capteur.
-
-    Effets de bord :
-      - calcule les champs dérivés (niveau uniquement)
-      - met à jour `derniere_mesure`, `nombre_mesures`, `en_ligne`
-      - repasse `etat_connexion` à EN_LIGNE
-    """
     if horodatage is None:
         horodatage = timezone.now()
 
@@ -297,7 +261,13 @@ def enregistrer_mesure(*, capteur, valeur: float, horodatage=None, payload_brut=
         nombre_mesures=F("nombre_mesures") + 1,
         date_modification=timezone.now(),
     )
-    capteur.refresh_from_db()
+    # 👇 SUPPRESSION DE capteur.refresh_from_db() QUI CAUSAIT LE CRASH
+
+    # Met à jour le niveau actuel du réservoir (pour l'affichage initial)
+    if capteur.type == Capteur.Type.NIVEAU and pourcentage is not None:
+        reservoir = capteur.reservoir
+        reservoir.niveau_actuel_pct = pourcentage
+        reservoir.save(update_fields=["niveau_actuel_pct"])
 
     return mesure
 
@@ -306,21 +276,10 @@ def enregistrer_mesure(*, capteur, valeur: float, horodatage=None, payload_brut=
 # Lecture
 # ==================================================================
 def recuperer_derniere_mesure(capteur):
-    """Retourne la mesure la plus récente du capteur, ou None."""
     return capteur.mesures.order_by("-horodatage").first()
 
 
 def calculer_etat_connexion_courant(capteur) -> dict:
-    """
-    Retourne un dict prêt à sérialiser pour les endpoints d'état :
-        {
-            "etat": "en_ligne",
-            "en_ligne": true,
-            "derniere_mesure": "...",
-            "secondes_depuis_derniere_mesure": 12.3,
-            "est_silencieux": false,
-        }
-    """
     capteur.refresh_from_db()
     etat = capteur.calculer_etat_connexion()
     if etat != capteur.etat_connexion:

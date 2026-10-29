@@ -22,11 +22,10 @@ def scenario_vidange(valeur, hauteur_max, compteur):
 
 
 def scenario_oscillation(valeur, hauteur_max, compteur):
-    """Le niveau oscille en sinusoïde autour de 50% (période ~20 mesures)."""
-    amplitude = hauteur_max * 0.3
-    centre = hauteur_max * 0.5
+    """Le niveau oscille autour de 70% (au lieu de 50%)."""
+    amplitude = hauteur_max * 0.10  # Oscille entre 60% et 80%
+    centre = hauteur_max * 0.70
     return centre + amplitude * math.sin(compteur * 0.3)
-
 
 def scenario_fuite(valeur, hauteur_max, compteur):
     """
@@ -45,8 +44,8 @@ def scenario_debordement(valeur, hauteur_max, compteur):
 
 
 def scenario_normal(valeur, hauteur_max, compteur):
-    """Oscillation douce autour de 50% avec petit bruit."""
-    centre = hauteur_max * 0.5
+    """Oscillation douce autour de 70% avec petit bruit."""
+    centre = hauteur_max * 0.7
     bruit = random.gauss(0, hauteur_max * 0.02)
     return valeur * 0.9 + (centre + bruit) * 0.1
 

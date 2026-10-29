@@ -24,3 +24,8 @@ export const getJournalAPI = async (limite = 50) => {
   const r = await api.get(`demonstration/journal/?limite=${limite}`);
   return r.data;
 };
+
+export const publierMessageTestAPI = async (valeur, typeCapteur = 'niveau') => {
+  const r = await api.post('demonstration/mqtt/publier/', { valeur, type_capteur: typeCapteur });
+  return r.data;
+};

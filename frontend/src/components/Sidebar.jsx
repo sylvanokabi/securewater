@@ -7,7 +7,7 @@ const Sidebar = () => {
     { path: '/reservoirs', label: 'Réservoirs' },
     { path: '/capteurs', label: 'Capteurs' },
     { path: '/alertes', label: 'Alertes' },
-    { path: '/simulation', label: 'Simulation' },
+    // { path: '/simulation', label: 'Simulation' }, // ❌ SUPPRIMÉ
     { section: 'Démonstration Sécurité' },
     { path: '/securite/mqtt', label: 'MQTT' },
     { path: '/securite/certificats', label: 'Certificats TLS' },
@@ -41,9 +41,7 @@ const Sidebar = () => {
                 end={lien.path === '/'}
                 className={({ isActive }) =>
                   `px-4 py-3 rounded-lg font-medium transition-colors text-sm ${
-                    isActive
-                      ? 'bg-sky-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    isActive ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                   }`
                 }
               >

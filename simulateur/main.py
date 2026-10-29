@@ -1,241 +1,82 @@
-"""
-Point d'entrée CLI du simulateur.
-
-Exemples :
-    python -m simulateur.main --reservoir test
-    python -m simulateur.main --reservoir test --codes-niveau n1,n2 --codes-debit d1
-    python -m simulateur.main --reservoir test --scenario fuite --duree 60
-    python -m simulateur.main --reservoir test --dry-run
-"""
-import argparse
 import logging
-import signal
 import sys
 import time
-
-from . import scenarios
+import requests
 from .capteur_debit import CapteurDebit
 from .capteur_niveau import CapteurNiveau
 from .client_mqtt import ClientSimulateurMQTT
 from .configuration import charger_configuration
 
-
 logger = logging.getLogger(__name__)
 
-
-# ==================================================================
-# CLI
-# ==================================================================
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        prog="simulateur",
-        description="Simulateur de capteurs IoT pour SecureWater",
-    )
-    parser.add_argument(
-        "--reservoir", "-r", required=True,
-        help="Code du réservoir cible (ex: test)",
-    )
-    parser.add_argument(
-        "--codes-niveau",
-        default="",
-        help="Codes des capteurs de niveau, séparés par des virgules (ex: n1,n2)",
-    )
-    parser.add_argument(
-        "--codes-debit",
-        default="",
-        help="Codes des capteurs de débit, séparés par des virgules (ex: d1)",
-    )
-    parser.add_argument(
-        "--scenario", "-s", choices=list(scenarios.SCENARIOS_DISPONIBLES.keys()),
-        default="normal",
-        help="Scénario d'évolution du niveau (défaut: normal)",
-    )
-    parser.add_argument(
-        "--intervalle", "-i", type=float, default=3.0,
-        help="Intervalle entre mesures en secondes (défaut: 3.0)",
-    )
-    parser.add_argument(
-        "--duree", "-d", type=float, default=None,
-        help="Durée max en secondes (défaut: infinie)",
-    )
-    parser.add_argument(
-        "--hauteur-max", type=float, default=200.0,
-        help="Hauteur max du réservoir en cm (défaut: 200)",
-    )
-    parser.add_argument(
-        "--niveau-initial", type=float, default=50.0,
-        help="Niveau initial en %% (défaut: 50)",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Vérifie la config sans se connecter",
-    )
-    parser.add_argument(
-        "--verbose", "-v", action="count", default=0,
-        help="Verbosité (-v info, -vv debug)",
-    )
-    return parser.parse_args(argv)
-
-
-def configurer_logs(verbose: int):
-    niveaux = [logging.WARNING, logging.INFO, logging.DEBUG]
-    niveau = niveaux[min(verbose, len(niveaux) - 1)]
-    logging.basicConfig(
-        level=niveau,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-
-# ==================================================================
-# Boucle principale
-# ==================================================================
-class GestionnaireArret:
-    """Capture Ctrl+C et SIGTERM pour arrêter proprement."""
-
-    def __init__(self):
-        self.arrete = False
-        signal.signal(signal.SIGINT, self._handler)
-        signal.signal(signal.SIGTERM, self._handler)
-
-    def _handler(self, signum, frame):
-        logger.warning("\n⚠️  Signal d'arrêt reçu (%s)", signum)
-        self.arrete = True
-
-
-def _split_codes(valeur: str) -> list[str]:
-    """Découpe une chaîne 'a,b,c' en liste ['a', 'b', 'c'] (vide si vide)."""
-    if not valeur:
-        return []
-    return [c.strip() for c in valeur.split(",") if c.strip()]
-
-
-def creer_capteurs(args, config, client):
-    """Instancie les capteurs selon les codes fournis."""
-    capteurs = []
-
-    # --- Capteurs de NIVEAU ---
-    for code in _split_codes(args.codes_niveau):
-        c = CapteurNiveau(
-            code=code,
-            code_reservoir=args.reservoir,
-            config=config,
-            client=client,
-            hauteur_max_cm=args.hauteur_max,
-            niveau_initial_pct=args.niveau_initial,
-        )
-        capteurs.append(c)
-
-    # --- Capteurs de DÉBIT ---
-    for code in _split_codes(args.codes_debit):
-        c = CapteurDebit(
-            code=code,
-            code_reservoir=args.reservoir,
-            config=config,
-            client=client,
-        )
-        capteurs.append(c)
-
-    return capteurs
-
-
-def boucle_principale(capteurs, config, args, arret: GestionnaireArret):
-    """Boucle de publication jusqu'à arrêt ou fin de durée."""
-    if not capteurs:
-        logger.error("❌ Aucun capteur à simuler.")
-        return
-
-    debut = time.time()
-    dernier_heartbeat = 0.0
-
-    # Annonce initiale "en ligne"
-    for c in capteurs:
-        c.initialiser()
-        c.annoncer_online()
-
-    logger.info(
-        "🚀 Simulateur démarré (%d capteurs, intervalle %.1fs)",
-        len(capteurs), args.intervalle,
-    )
-
-    while not arret.arrete:
-        now = time.time()
-
-        if args.duree is not None and (now - debut) >= args.duree:
-            logger.info("⏱️  Durée maximale atteinte (%.0fs)", args.duree)
-            break
-
-        for c in capteurs:
-            try:
-                c.publier_mesure()
-            except Exception as e:
-                logger.exception("Erreur publication mesure %s : %s", c.code, e)
-
-        if now - dernier_heartbeat >= config.intervalle_heartbeat:
-            for c in capteurs:
-                try:
-                    c.publier_heartbeat()
-                except Exception as e:
-                    logger.exception("Erreur heartbeat %s : %s", c.code, e)
-            dernier_heartbeat = now
-
-        time.sleep(args.intervalle)
-
-
-# ==================================================================
-# Point d'entrée
-# ==================================================================
-def main(argv=None):
-    args = parse_args(argv)
-    configurer_logs(args.verbose)
-
+def main():
     config = charger_configuration()
-    config.scenario = args.scenario
-    config.intervalle_mesure = args.intervalle
-
-    logger.info(
-        "Configuration : broker %s:%s | réservoir=%s | scénario=%s",
-        config.host, config.port, args.reservoir, args.scenario,
-    )
-
-    erreurs = config.verifier_certificats()
-    if erreurs:
-        logger.error("❌ Certificats manquants :")
-        for e in erreurs:
-            logger.error("  - %s", e)
-        return 2
-
-    if args.dry_run:
-        logger.info("✅ Configuration valide (dry-run, aucune connexion)")
-        return 0
-
-    client = ClientSimulateurMQTT(config, client_id_suffix=args.reservoir)
+    client = ClientSimulateurMQTT(config, client_id_suffix="global")
+    
     try:
         client.connecter()
     except Exception as e:
-        logger.exception("❌ Impossible de se connecter au broker : %s", e)
-        return 3
+        logger.error(f"Impossible de se connecter au broker MQTT : {e}")
+        time.sleep(5)
+        sys.exit(1)
 
-    capteurs = creer_capteurs(args, config, client)
+    logger.info("🌊 Simulateur global prêt. En attente des réservoirs...")
 
-    arret = GestionnaireArret()
+    capteurs_cache = {}
 
-    try:
-        boucle_principale(capteurs, config, args, arret)
-    except Exception as e:
-        logger.exception("💥 Erreur dans la boucle principale : %s", e)
-        return 4
-    finally:
-        for c in capteurs:
+    while True:
+        try:
             try:
-                c.annoncer_offline("arrêt simulateur")
-            except Exception:
-                pass
-        client.deconnecter()
+                r = requests.get("http://127.0.0.1:8000/api/reservoirs/etat-global/", timeout=3)
+            except requests.exceptions.RequestException:
+                time.sleep(2)
+                continue
 
-    logger.info("👋 Simulateur arrêté proprement.")
-    return 0
+            if r.status_code == 200:
+                reservoirs = r.json()
+                
+                # On nettoie le cache des capteurs qui n'existent plus
+                codes_actifs = set()
+                for res in reservoirs:
+                    for c in res["capteurs_niveau"] + res["capteurs_debit"]:
+                        codes_actifs.add(f"{res['code']}_{c}")
+                
+                # Supprime les vieux capteurs du cache
+                for key in list(capteurs_cache.keys()):
+                    if key not in codes_actifs:
+                        del capteurs_cache[key]
 
+                for res in reservoirs:
+                    code_res = res["code"]
+                    
+                    for code_cap in res["capteurs_niveau"]:
+                        cache_key = f"{code_res}_{code_cap}"
+                        if cache_key not in capteurs_cache:
+                            capteurs_cache[cache_key] = CapteurNiveau(code_cap, code_res, config, client, hauteur_max_cm=res["hauteur_max_cm"])
+                            capteurs_cache[cache_key].annoncer_online()
+                        
+                        capteur = capteurs_cache[cache_key]
+                        val_cm = capteur.generer_valeur_forcee(
+                            scenario=res["scenario"], 
+                            niveau_actuel_pct=res["niveau_pct"], 
+                            hauteur_max=res["hauteur_max_cm"], 
+                            intervalle=1.5 # 👈 Intervalle de 1.5s pour éviter la surcharge
+                        )
+                        capteur.publier_mesure_forcee(val_cm)
+                        
+                    for code_cap in res["capteurs_debit"]:
+                        cache_key = f"{code_res}_{code_cap}"
+                        if cache_key not in capteurs_cache:
+                            capteurs_cache[cache_key] = CapteurDebit(code_cap, code_res, config, client)
+                            capteurs_cache[cache_key].annoncer_online()
+                        
+                        capteurs_cache[cache_key].publier_mesure()
+
+            time.sleep(1.5) # 👈 Le simulateur tourne à 1.5s
+            
+        except Exception as e:
+            logger.error(f"Erreur simulateur : {e}")
+            time.sleep(3)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

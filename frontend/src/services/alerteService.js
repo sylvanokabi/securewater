@@ -24,14 +24,17 @@ const handleResponse = async (response) => {
   return response;
 };
 
-export const getAlertesAPI = async () => {
-  const response = await fetch(`${API_URL}/`, { headers: getHeaders() });
+// ✅ AJOUT : accepte désormais des paramètres de filtrage (reservoir, statut, etc.)
+export const getAlertesAPI = async (params = {}) => {
+  const queryString = new URLSearchParams(params).toString();
+  const url = `${API_URL}/${queryString ? `?${queryString}` : ''}`;
+  const response = await fetch(url, { headers: getHeaders() });
   await handleResponse(response);
   const data = await response.json();
   return Array.isArray(data) ? data : data.results || [];
 };
 
-// Exportation sous le nom 'resoudreAlerteAPI' attendu par Alertes.jsx
+// ✅ Nom correct attendu par Alertes.jsx et Reservoirs.jsx
 export const resoudreAlerteAPI = async (alerteId) => {
   const response = await fetch(`${API_URL}/${alerteId}/acquitter/`, {
     method: 'POST',
@@ -41,5 +44,5 @@ export const resoudreAlerteAPI = async (alerteId) => {
   return await response.json();
 };
 
-// Alias conservé si d'autres composants utilisent acquitterAlerteAPI
+// Alias conservé
 export const acquitterAlerteAPI = resoudreAlerteAPI;
